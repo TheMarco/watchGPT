@@ -2,7 +2,7 @@
 
 Realtime ChatGPT voice for Apple Watch. **Two-target SwiftUI project**: a watchOS app captures/plays audio, an iOS companion app holds the OpenAI Realtime WebSocket. They talk over `WatchConnectivity`. Sideload only — never distribute a build (the iPhone build embeds your live API key).
 
-Repo: https://github.com/TheMarco/watchGPT (public).
+Repo: https://github.com/TheMarco/watchGPT (private).
 
 ## Why two targets
 

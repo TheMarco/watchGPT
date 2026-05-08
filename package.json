@@ -1,0 +1,13 @@
+{
+  "name": "watchgpt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Realtime ChatGPT voice for Apple Watch with iPhone companion.",
+  "scripts": {
+    "configure:phone": "node scripts/configure-phone.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

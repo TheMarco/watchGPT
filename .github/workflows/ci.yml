@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  swift-typecheck:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Typecheck watch target
+        run: |
+          xcrun --sdk watchos swiftc -typecheck \
+            Shared/RealtimeMessages.swift \
+            WatchGPT/WatchGPTApp.swift \
+            WatchGPT/Support/AppConfiguration.swift \
+            WatchGPT/Models/RealtimeTranscriptLine.swift \
+            WatchGPT/Services/RealtimeAudioIO.swift \
+            WatchGPT/Services/RealtimeVoiceSession.swift \
+            WatchGPT/Views/ContentView.swift \
+            WatchGPT/Views/RealtimeTranscriptBubble.swift \
+            WatchGPT/Views/SettingsView.swift \
+            -target arm64-apple-watchos11.0
+      - name: Typecheck iPhone target
+        run: |
+          xcrun --sdk iphoneos swiftc -typecheck \
+            Shared/RealtimeMessages.swift \
+            WatchGPTPhone/WatchGPTPhoneApp.swift \
+            WatchGPTPhone/Support/PhoneConfiguration.swift \
+            WatchGPTPhone/Views/PhoneContentView.swift \
+            WatchGPTPhone/Views/PhoneSettingsView.swift \
+            WatchGPTPhone/Services/PhoneRealtimeBridge.swift \
+            -target arm64-apple-ios17.0

@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.claude/
+node_modules/
+WatchGPT/Config/LocalSecrets.xcconfig
+WatchGPTPhone/Config/LocalSecrets.xcconfig
+
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM

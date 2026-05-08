@@ -1,0 +1,3 @@
+WATCHGPT_OPENAI_API_KEY =
+
+#include? "LocalSecrets.xcconfig"

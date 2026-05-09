@@ -4,6 +4,7 @@ struct ContentView: View {
     @StateObject private var session = RealtimeVoiceSession()
     @State private var isShowingSettings = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
     var body: some View {
         ZStack {
@@ -223,18 +224,29 @@ struct ContentView: View {
     }
 
     private var background: some View {
-        let normalizedPeak = Double(min(1.0, session.lastInputPeak * 2.5))
-        let baseHaloOpacity = session.isConnected ? 0.30 : 0.18
+        let normalizedPeak = isLuminanceReduced
+            ? 0
+            : Double(min(1.0, session.lastInputPeak * 2.5))
+        let baseHaloOpacity = isLuminanceReduced
+            ? 0.06
+            : (session.isConnected ? 0.30 : 0.18)
         let haloOpacity = baseHaloOpacity + normalizedPeak * 0.22
         let haloScale = 1.0 + normalizedPeak * 0.34
         let haloBlur = 30 + normalizedPeak * 8
+        let haloGradient: LinearGradient = isLuminanceReduced
+            ? LinearGradient(
+                colors: [.gray.opacity(0.5), .gray.opacity(0.2)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            : statusGradient
 
         return ZStack {
             Color.black
                 .ignoresSafeArea()
 
             Circle()
-                .fill(statusGradient.opacity(haloOpacity))
+                .fill(haloGradient.opacity(haloOpacity))
                 .frame(width: 150, height: 150)
                 .scaleEffect(haloScale)
                 .blur(radius: haloBlur)
@@ -304,37 +316,52 @@ private struct VoiceOrb: View {
     let onPressUp: () -> Void
 
     @State private var isPressed = false
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+    private var dimmedGradient: LinearGradient {
+        LinearGradient(
+            colors: [.gray.opacity(0.7), .gray.opacity(0.35)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 
     var body: some View {
         TimelineView(.animation) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
-            let pulse = isActive ? (sin(time * 2.6) + 1) / 2 : 0
+            let pulse = (isActive && !isLuminanceReduced) ? (sin(time * 2.6) + 1) / 2 : 0
             let ringScale = 1 + pulse * 0.12
+            let activeGradient = isLuminanceReduced ? dimmedGradient : gradient
+            let activeIcon = isLuminanceReduced ? "waveform" : iconName
+            let activeGlow = isLuminanceReduced ? Color.white.opacity(0.18) : glowColor.opacity(isActive ? 0.62 : 0.24)
+            let glowRadius: CGFloat = isLuminanceReduced ? 4 : (isActive ? 14 : 7)
 
             ZStack {
                 Circle()
-                    .stroke(gradient, lineWidth: 2)
-                    .opacity(isActive ? 0.34 : 0.16)
+                    .stroke(activeGradient, lineWidth: 2)
+                    .opacity(isLuminanceReduced ? 0.10 : (isActive ? 0.34 : 0.16))
                     .scaleEffect(ringScale)
 
                 Circle()
-                    .fill(gradient)
-                    .shadow(color: glowColor.opacity(isActive ? 0.62 : 0.24), radius: isActive ? 14 : 7)
+                    .fill(activeGradient)
+                    .shadow(color: activeGlow, radius: glowRadius)
 
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [.white.opacity(0.66), .white.opacity(0.05), .clear],
-                            center: .topLeading,
-                            startRadius: 2,
-                            endRadius: 42
+                if !isLuminanceReduced {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [.white.opacity(0.66), .white.opacity(0.05), .clear],
+                                center: .topLeading,
+                                startRadius: 2,
+                                endRadius: 42
+                            )
                         )
-                    )
+                }
 
-                Image(systemName: iconName)
+                Image(systemName: activeIcon)
                     .font(.system(size: 27, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .symbolEffect(.pulse, options: .repeating, value: phase == .listening)
+                    .foregroundStyle(.white.opacity(isLuminanceReduced ? 0.78 : 1.0))
+                    .symbolEffect(.pulse, options: .repeating, value: !isLuminanceReduced && phase == .listening)
             }
             .scaleEffect(isPressed ? 0.92 : 1.0)
             .animation(.spring(duration: 0.18), value: isPressed)

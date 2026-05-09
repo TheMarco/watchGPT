@@ -38,6 +38,11 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         didSet {
             if oldValue != phase {
                 phaseEnteredAt = Date()
+                // Reset the idle clock when the user becomes the expected actor:
+                // they shouldn't be charged for time spent listening to the assistant.
+                if oldValue == .speaking {
+                    lastActivityAt = Date()
+                }
             }
         }
     }

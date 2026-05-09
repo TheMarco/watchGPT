@@ -5,6 +5,7 @@ struct PhoneContentView: View {
     @ObservedObject private var bridge = PhoneRealtimeBridge.shared
     @State private var showingSettings = false
     @State private var showingClearConfirmation = false
+    @State private var isDiagnosticsExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -13,6 +14,10 @@ struct PhoneContentView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                     .padding(.bottom, 14)
+
+                mainActions
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
 
                 diagnosticsPanel
                     .padding(.horizontal, 16)
@@ -49,10 +54,24 @@ struct PhoneContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showingSettings = true
-            } label: {
-                Image(systemName: "gearshape")
+            HStack(spacing: 14) {
+                NavigationLink {
+                    PhoneHelpView()
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+
+                NavigationLink {
+                    PhoneAboutView()
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+
+                Button {
+                    showingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
             }
         }
     }
@@ -91,15 +110,27 @@ struct PhoneContentView: View {
                 .fill(Color(.secondarySystemGroupedBackground))
                 .overlay(alignment: .top) {
                     LinearGradient(
-                        colors: [heroTint.opacity(bridge.isActive ? 0.18 : 0.10), .clear],
-                        startPoint: .top,
-                        endPoint: .center
+                        colors: [
+                            heroTint.opacity(bridge.isActive ? 0.26 : 0.16),
+                            Color.purple.opacity(PhoneConfiguration.openAIAPIKey.isEmpty ? 0.02 : 0.08),
+                            .clear
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .fill(heroTint.opacity(0.12))
+                        .frame(width: 130, height: 130)
+                        .blur(radius: 36)
+                        .offset(x: 44, y: 52)
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
                 .overlay {
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(heroTint.opacity(0.16), lineWidth: 0.5)
+                        .strokeBorder(heroTint.opacity(0.22), lineWidth: 0.7)
                 }
         }
     }
@@ -111,33 +142,34 @@ struct PhoneContentView: View {
                 : 0.0
 
             ZStack {
-                Circle()
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(heroTint.opacity(0.16))
-                    .frame(width: 72, height: 72)
+                    .frame(width: 78, height: 78)
 
                 if bridge.isActive {
-                    Circle()
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .stroke(heroTint.opacity(0.18 + phase * 0.32), lineWidth: 1.5)
-                        .frame(width: 72 + phase * 14, height: 72 + phase * 14)
+                        .frame(width: 78 + phase * 14, height: 78 + phase * 14)
                 }
 
-                Image(systemName: heroIconName)
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(heroTint)
-                    .symbolRenderingMode(.hierarchical)
-                    .contentTransition(.symbolEffect(.replace))
+                PhoneAppIconImage()
+                    .frame(width: 58, height: 58)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .shadow(color: heroTint.opacity(0.26), radius: 14, y: 6)
+
+                if PhoneConfiguration.openAIAPIKey.isEmpty {
+                    Image(systemName: "key.horizontal.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 24, height: 24)
+                        .background(.orange, in: Circle())
+                        .overlay {
+                            Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1.5)
+                        }
+                        .offset(x: 28, y: 28)
+                }
             }
         }
-    }
-
-    private var heroIconName: String {
-        if PhoneConfiguration.openAIAPIKey.isEmpty {
-            return "key.horizontal"
-        }
-        if bridge.isActive {
-            return "applewatch.radiowaves.left.and.right"
-        }
-        return "applewatch"
     }
 
     private var heroSubline: String {
@@ -192,38 +224,106 @@ struct PhoneContentView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Transcripts
+    // MARK: - Actions
+
+    private var mainActions: some View {
+        HStack(spacing: 10) {
+            NavigationLink {
+                PhoneHelpView()
+            } label: {
+                mainAction("Help", icon: "questionmark.circle.fill", tint: .blue)
+            }
+            .buttonStyle(.plain)
+
+            NavigationLink {
+                PhoneAboutView()
+            } label: {
+                mainAction("About", icon: "info.circle.fill", tint: .purple)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func mainAction(_ title: String, icon: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .overlay {
+                    LinearGradient(
+                        colors: [tint.opacity(0.10), .clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(tint.opacity(0.16), lineWidth: 0.5)
+        }
+    }
+
+    // MARK: - Diagnostics
 
     private var diagnosticsPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Diagnostics", systemImage: "waveform.path")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text(bridge.isActive ? "Live" : "Idle")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(bridge.isActive ? .green : .secondary)
+            Button {
+                withAnimation(.smooth(duration: 0.24)) {
+                    isDiagnosticsExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Label("Diagnostics", systemImage: "waveform.path")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text(bridge.isActive ? "Live" : "Idle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(bridge.isActive ? .green : .secondary)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isDiagnosticsExpanded ? 180 : 0))
+                }
             }
+            .buttonStyle(.plain)
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                diagnostic("Mode", PhoneConfiguration.defaultVoiceEngine.displayName)
-                diagnostic("Turn-taking", PhoneConfiguration.realtimeEagerness.displayName)
-                diagnostic("Last event", bridge.lastOpenAIEventType)
-                diagnostic("Reconnects", "\(bridge.reconnectCount)")
-                diagnostic("Mic peak", String(format: "%.2f", bridge.lastWatchInputPeak))
-                diagnostic("Watch chunks", "\(bridge.audioChunksFromWatch)")
-            }
+            if isDiagnosticsExpanded {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    diagnostic("Mode", PhoneConfiguration.defaultVoiceEngine.displayName)
+                    diagnostic("Turn-taking", PhoneConfiguration.realtimeEagerness.displayName)
+                    diagnostic("Last event", bridge.lastOpenAIEventType)
+                    diagnostic("Reconnects", "\(bridge.reconnectCount)")
+                    diagnostic("Mic peak", String(format: "%.2f", bridge.lastWatchInputPeak))
+                    diagnostic("Watch chunks", "\(bridge.audioChunksFromWatch)")
+                }
 
-            if let reconnect = bridge.lastReconnectMessage {
-                Text(reconnect)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                if let reconnect = bridge.lastReconnectMessage {
+                    Text(reconnect)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
         }
         .padding(12)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
+
+    // MARK: - Transcripts
 
     private func diagnostic(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -609,6 +709,40 @@ struct PhoneTranscriptDetailView: View {
             ),
             style: .continuous
         )
+    }
+}
+
+struct PhoneAppIconImage: View {
+    var body: some View {
+        if let image = Self.appIcon {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+        } else {
+            ZStack {
+                LinearGradient(
+                    colors: [.blue, .purple, .pink],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Image(systemName: "applewatch.radiowaves.left.and.right")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+
+    private static var appIcon: UIImage? {
+        guard
+            let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any],
+            let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
+            let files = primary["CFBundleIconFiles"] as? [String],
+            let iconName = files.last
+        else {
+            return UIImage(named: "PhoneAppIcon")
+        }
+
+        return UIImage(named: iconName) ?? UIImage(named: "PhoneAppIcon")
     }
 }
 

@@ -17,12 +17,13 @@ struct ContentView: View {
                 VoiceOrb(
                     phase: session.phase,
                     gradient: statusGradient,
+                    tint: statusTint,
                     isActive: session.isConnected,
                     onPressDown: handleOrbPressDown,
                     onPressUp: handleOrbPressUp
                 )
-                .frame(width: 72, height: 72)
-                .padding(.top, 1)
+                .frame(width: 76, height: 76)
+                .padding(.top, 2)
 
                 statusCopy
                 transcriptView
@@ -54,29 +55,37 @@ struct ContentView: View {
 
     private var topBar: some View {
         HStack(alignment: .center) {
-            Text("WatchGPT")
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .foregroundStyle(.primary)
-                .opacity(0.92)
+            HStack(spacing: 7) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(statusGradient)
+                    .frame(width: 18, height: 18)
+                    .overlay {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+
+                Text("WatchGPT")
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .opacity(0.94)
+            }
 
             Spacer(minLength: 8)
 
-            Image(systemName: session.isCompanionReachable ? "iphone.radiowaves.left.and.right" : "iphone.slash")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(session.isCompanionReachable ? .green : .orange)
-                .accessibilityLabel(session.connectionStatusText)
+            connectionPill
 
             Button {
                 isShowingSettings = true
             } label: {
                 Image(systemName: "gearshape.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 32, height: 32)
-                    .background(.white.opacity(0.11), in: Circle())
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .frame(width: 30, height: 30)
+                    .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay {
-                        Circle()
-                            .strokeBorder(.white.opacity(0.10), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
                     }
             }
             .buttonStyle(.plain)
@@ -84,11 +93,30 @@ struct ContentView: View {
         }
     }
 
+    private var connectionPill: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(session.isCompanionReachable ? .green : .orange)
+                .frame(width: 5, height: 5)
+
+            Image(systemName: session.isCompanionReachable ? "iphone" : "iphone.slash")
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(session.isCompanionReachable ? .green : .orange)
+        .frame(width: 34, height: 24)
+        .background((session.isCompanionReachable ? Color.green : Color.orange).opacity(0.14), in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder((session.isCompanionReachable ? Color.green : Color.orange).opacity(0.22), lineWidth: 0.5)
+        }
+        .accessibilityLabel(session.connectionStatusText)
+    }
+
     private var statusCopy: some View {
         VStack(spacing: 1) {
             Text(session.statusText)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .foregroundStyle(.primary)
+                .font(.system(.subheadline, design: .rounded, weight: .bold))
+                .foregroundStyle(statusTitleStyle)
                 .contentTransition(.opacity)
 
             Text(statusSubtitle)
@@ -130,11 +158,19 @@ struct ContentView: View {
             .scrollIndicators(.hidden)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.white.opacity(0.055))
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.white.opacity(0.045))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(.white.opacity(0.09), lineWidth: 0.5)
+                        LinearGradient(
+                            colors: [.white.opacity(0.13), .white.opacity(0.03)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(statusTint.opacity(session.isConnected ? 0.22 : 0.10), lineWidth: 0.7)
                     }
             }
             .onChange(of: session.transcriptLines.count) { _, _ in
@@ -150,8 +186,10 @@ struct ContentView: View {
     private var emptyTranscript: some View {
         VStack(spacing: 5) {
             Image(systemName: session.isConnected ? "mic.fill" : "waveform")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(statusGradient)
+                .frame(width: 34, height: 34)
+                .background(statusTint.opacity(0.13), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
 
             Text(session.isConnected ? "Listening for you" : "Tap the orb")
                 .font(.system(.caption, design: .rounded, weight: .semibold))
@@ -174,6 +212,8 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 38)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, 10)
+                .background(.white.opacity(0.045), in: Capsule())
 
             if session.isConnected {
                 Button {
@@ -181,12 +221,12 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.white)
                         .frame(width: 38, height: 38)
-                        .background(.thinMaterial, in: Circle())
+                        .background(.red.gradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                         .overlay {
-                            Circle()
-                                .strokeBorder(.red.opacity(0.30), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .strokeBorder(.white.opacity(0.28), lineWidth: 0.6)
                         }
                 }
                 .buttonStyle(.plain)
@@ -263,9 +303,15 @@ struct ContentView: View {
                 .animation(.smooth(duration: 0.18), value: session.lastInputPeak)
                 .animation(.smooth(duration: 0.30), value: session.isConnected)
 
+            Circle()
+                .fill(statusTint.opacity(isLuminanceReduced ? 0 : 0.12))
+                .frame(width: 110, height: 110)
+                .blur(radius: 36)
+                .offset(x: 58, y: 80)
+
             LinearGradient(
                 colors: [
-                    .white.opacity(0.08),
+                    statusTint.opacity(isLuminanceReduced ? 0.04 : 0.11),
                     .clear,
                     .black.opacity(0.88)
                 ],
@@ -301,6 +347,25 @@ struct ContentView: View {
         }
     }
 
+    private var statusTint: Color {
+        switch session.phase {
+        case .disconnected:
+            return .cyan
+        case .connecting:
+            return .orange
+        case .connected:
+            return .mint
+        case .listening:
+            return .green
+        case .speaking:
+            return .purple
+        }
+    }
+
+    private var statusTitleStyle: some ShapeStyle {
+        statusGradient
+    }
+
     private var statusSubtitle: String {
         switch session.phase {
         case .disconnected:
@@ -323,6 +388,7 @@ struct ContentView: View {
 private struct VoiceOrb: View {
     let phase: RealtimeVoiceSession.Phase
     let gradient: LinearGradient
+    let tint: Color
     let isActive: Bool
     let onPressDown: () -> Void
     let onPressUp: () -> Void
@@ -346,20 +412,20 @@ private struct VoiceOrb: View {
             let activeGradient = isLuminanceReduced ? dimmedGradient : gradient
             let activeIcon = isLuminanceReduced ? "waveform" : iconName
             let activeGlow = isLuminanceReduced ? Color.white.opacity(0.18) : glowColor.opacity(isActive ? 0.62 : 0.24)
-            let glowRadius: CGFloat = isLuminanceReduced ? 4 : (isActive ? 14 : 7)
+            let glowRadius: CGFloat = isLuminanceReduced ? 4 : (isActive ? 18 : 9)
 
             ZStack {
-                Circle()
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .stroke(activeGradient, lineWidth: 2)
                     .opacity(isLuminanceReduced ? 0.10 : (isActive ? 0.34 : 0.16))
                     .scaleEffect(ringScale)
 
-                Circle()
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(activeGradient)
                     .shadow(color: activeGlow, radius: glowRadius)
 
                 if !isLuminanceReduced {
-                    Circle()
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .fill(
                             RadialGradient(
                                 colors: [.white.opacity(0.66), .white.opacity(0.05), .clear],
@@ -368,6 +434,17 @@ private struct VoiceOrb: View {
                                 endRadius: 42
                             )
                         )
+
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(.white.opacity(0.22), lineWidth: 0.8)
+
+                    if phase == .listening {
+                        ForEach(0..<3, id: \.self) { index in
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .stroke(tint.opacity(0.18 - Double(index) * 0.035), lineWidth: 1)
+                                .scaleEffect(1.12 + pulse * 0.16 + CGFloat(index) * 0.10)
+                        }
+                    }
                 }
 
                 Image(systemName: activeIcon)

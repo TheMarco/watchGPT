@@ -30,32 +30,60 @@ struct RealtimeTranscriptBubble: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(bubbleBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .clipShape(bubbleShape)
             .overlay {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                bubbleShape
                     .strokeBorder(.white.opacity(line.speaker == .user ? 0.18 : 0.08), lineWidth: 0.5)
             }
+            .shadow(color: bubbleShadow, radius: 8, y: 3)
     }
 
     @ViewBuilder
     private var bubbleBackground: some View {
         if line.speaker == .user {
             LinearGradient(
-                colors: [.accentColor, .cyan],
+                colors: [.blue, .cyan],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
         } else {
-            Color.white.opacity(0.12)
+            LinearGradient(
+                colors: [.white.opacity(0.16), .white.opacity(0.08)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
+    }
+
+    private var bubbleShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            cornerRadii: .init(
+                topLeading: 14,
+                bottomLeading: line.speaker == .user ? 14 : 5,
+                bottomTrailing: line.speaker == .user ? 5 : 14,
+                topTrailing: 14
+            ),
+            style: .continuous
+        )
+    }
+
+    private var bubbleShadow: Color {
+        line.speaker == .user ? .cyan.opacity(0.16) : .black.opacity(0.14)
     }
 
     private var speakerGlyph: some View {
         Image(systemName: "sparkles")
             .font(.system(size: 10, weight: .bold))
-            .foregroundStyle(.cyan)
+            .foregroundStyle(.white)
             .frame(width: 18, height: 18)
-            .background(.white.opacity(0.08), in: Circle())
+            .background(
+                LinearGradient(
+                    colors: [.purple, .pink],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
             .accessibilityHidden(true)
     }
 }

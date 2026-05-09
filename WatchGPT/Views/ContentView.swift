@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var isShowingSettings = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @AppStorage(AppConfiguration.voiceBargeInKey) private var voiceBargeIn = false
 
     var body: some View {
         ZStack {
@@ -202,7 +203,10 @@ struct ContentView: View {
         case .listening:
             return session.isAutomaticConversationEnabled ? "Listening hands-free" : "Release to send"
         case .speaking:
-            return session.isAutomaticConversationEnabled ? "Speak to interrupt" : "Replying…"
+            if !session.isAutomaticConversationEnabled {
+                return "Replying…"
+            }
+            return voiceBargeIn ? "Speak/tap to interrupt" : "Tap to interrupt"
         }
     }
 
@@ -303,7 +307,10 @@ struct ContentView: View {
         case .listening:
             return session.isAutomaticConversationEnabled ? "Listening for your turn" : "Recording your voice"
         case .speaking:
-            return session.isAutomaticConversationEnabled ? "You can interrupt" : "Playing the reply"
+            if !session.isAutomaticConversationEnabled {
+                return "Playing the reply"
+            }
+            return voiceBargeIn ? "Speak/tap to interrupt" : "Tap to interrupt"
         }
     }
 }

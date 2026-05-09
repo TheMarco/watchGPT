@@ -286,7 +286,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             }
         case .connecting:
             if elapsed > 12 {
-                errorMessage = "Connecting timed out. Tap the orb to retry."
+                errorMessage = "Connecting timed out. Tap the main button to retry."
                 stop()
             }
         case .listening:

@@ -55,21 +55,12 @@ struct ContentView: View {
 
     private var topBar: some View {
         HStack(alignment: .center) {
-            HStack(spacing: 7) {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(statusGradient)
-                    .frame(width: 18, height: 18)
-                    .overlay {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-
-                Text("WatchGPT")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .opacity(0.94)
-            }
+            Text("WatchGPT")
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .opacity(0.94)
 
             Spacer(minLength: 8)
 
@@ -191,7 +182,7 @@ struct ContentView: View {
                 .frame(width: 34, height: 34)
                 .background(statusTint.opacity(0.13), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
 
-            Text(session.isConnected ? "Listening for you" : "Tap the orb")
+            Text(session.isConnected ? "Listening for you" : "Tap the button")
                 .font(.system(.caption, design: .rounded, weight: .semibold))
                 .foregroundStyle(.primary)
 
@@ -240,11 +231,11 @@ struct ContentView: View {
     private var controlsHint: String {
         switch session.phase {
         case .disconnected:
-            return "Tap the orb to start"
+            return "Tap the button to start"
         case .connecting:
             return "Connecting…"
         case .connected:
-            return session.isAutomaticConversationEnabled ? "Speak anytime" : "Hold the orb to talk"
+            return session.isAutomaticConversationEnabled ? "Speak anytime" : "Hold the button to talk"
         case .listening:
             return session.isAutomaticConversationEnabled ? "Listening hands-free" : "Release to send"
         case .speaking:
@@ -369,11 +360,11 @@ struct ContentView: View {
     private var statusSubtitle: String {
         switch session.phase {
         case .disconnected:
-            return session.isCompanionReachable ? "Tap the orb" : session.connectionStatusText
+            return session.isCompanionReachable ? "Tap the button" : session.connectionStatusText
         case .connecting:
             return session.connectionStatusText == "iPhone ready" ? "Opening session" : session.connectionStatusText
         case .connected:
-            return session.isAutomaticConversationEnabled ? "Speak naturally" : "Hold the orb to talk"
+            return session.isAutomaticConversationEnabled ? "Speak naturally" : "Hold the button to talk"
         case .listening:
             return session.isAutomaticConversationEnabled ? "Listening for your turn" : "Recording your voice"
         case .speaking:

@@ -41,7 +41,7 @@ struct SettingsView: View {
             } header: {
                 Text("Microphone")
             } footer: {
-                Text("Lower sensitivity if background noise interferes. Turn barge-in off if the assistant keeps cutting itself off — you can still tap the orb to interrupt.")
+                Text("Lower sensitivity if background noise interferes. Turn barge-in off if the assistant keeps cutting itself off — you can still tap the main button to interrupt.")
             }
 
             Section {

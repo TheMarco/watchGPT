@@ -20,11 +20,18 @@ The watch cannot reliably open arbitrary outbound WebSockets on its own. That's 
 
 ## Features
 
-- **Fast Mode** — OpenAI `gpt-realtime`, semantic VAD with barge-in. Streaming speech-to-speech, conversational latency.
+- **Fast Mode** — OpenAI `gpt-realtime`, semantic VAD. Streaming speech-to-speech, conversational latency.
 - **Think Mode** — phone-side speech detection → transcription → Responses API (`gpt-5.5`, reasoning effort `low`) → TTS → playback. Multi-second latency per turn, but you get the smarter model.
+- **Web search in both modes.** Think Mode uses OpenAI's built-in `web_search` server-side (no extra config). Fast Mode uses a function-tool callout to Brave Search if you provide a free Brave API key.
 - **Hands-free** by default. Push-to-talk available in watch settings.
-- **Transcript history** on the iPhone — every session is saved with an auto-generated title, copy / share / delete actions, native swipe-to-delete with confirmation.
+- **Voice barge-in toggle.** Off by default — half-duplex with tap-to-interrupt for quieter, less-echoey conversations. Flip it on if you want to interrupt the assistant by talking.
+- **38 languages.** Lock the assistant (and the transcription model) to a specific language, or leave it on Auto.
+- **Mic sensitivity preset** — High / Standard / Low for noisy rooms.
+- **Audio-reactive watch halo.** The blurred glow behind the orb breathes with your voice.
+- **AOD-aware.** When the watch enters always-on dim mode, the orb switches to a calm grayscale look so phase colors don't go stale.
+- **Transcript history** on the iPhone — every session is saved with an auto-generated title, copy/share/delete actions, native swipe-to-delete, iMessage-style chat-bubble detail view.
 - **10 voices** to choose from in iPhone settings.
+- **Idle auto-end.** Sessions tear down after 30 seconds of silence so battery and tokens don't drain when you walk away.
 - **Workout runtime** keeps the watch process alive longer than a typical 30-second background tail.
 - **API key never touches the watch.**
 
@@ -102,14 +109,25 @@ If everything is wired up correctly, the watch shows "Connecting…" briefly and
 On the **watch**, hit the gear icon:
 
 - **Mode** — Fast Mode (default, `gpt-realtime`) or Think Mode (`gpt-5.5`).
-- **Hands-free** — toggle. On = talk naturally; off = push and hold the orb to speak.
-- **Workout runtime** — toggle. On (default) = use `HKWorkoutSession` for longer background life. Off = `WKExtendedRuntimeSession` only.
-- **Speak replies** — toggle. Off mutes the speaker and makes it text-only.
+- **Hands-free conversation** — On = talk naturally; off = push and hold the orb to speak.
+- **Audio replies** — Off mutes the speaker (text-only).
+- **Mic sensitivity** — High (quiet rooms), Standard (default), Low (noisy rooms — TV, kids).
+- **Voice barge-in** — Off (default) gives clean half-duplex with tap-to-interrupt. On lets you interrupt by talking.
+- **Workout keep-alive** — On (default) uses `HKWorkoutSession` for longer process life and the always-on dim treatment. Off = `WKExtendedRuntimeSession` only.
 
 On the **iPhone**, hit the gear icon:
 
 - **OpenAI API key** — paste here to override the baked value.
 - **Voice** — pick from 10 voices. `marin` and `cedar` sound best with `gpt-realtime`.
+- **Assistant language** — Auto (matches what you speak, falls back to English when uncertain) or pin to one of 38 languages.
+- **Brave Search API key** — optional. Enables `web_search` in Fast Mode. Get one free at <https://api.search.brave.com>. Think Mode does not need this.
+
+## Web search
+
+The assistant can fetch fresh information when you ask things like *"what's the latest…"*, *"current price of…"*, *"search the web for…"*, or any time it would otherwise have to guess from training-time data.
+
+- **Think Mode** uses OpenAI's built-in `web_search` tool, executed server-side. No extra setup — works as soon as you have an OpenAI key with access to `gpt-5.5`. Adds a couple of seconds to the response.
+- **Fast Mode** uses a function-tool callout to your configured search provider (Brave by default). Without a Brave key, the tool isn't registered and the assistant correctly reports it has no search capability. With a key, it'll briefly say "Let me check…" before answering with sources.
 
 ## Why the watch asks for workout access
 
@@ -130,9 +148,10 @@ The most effective workaround Apple actually permits is starting a `HKWorkoutSes
 
 These are the rough edges. They're known, they have plausible causes, and pull requests are welcome.
 
-- **Watch screen dims, audio keeps going.** When the watch screen goes dark or you drop your wrist, the audio process keeps running (thanks to the workout runtime), but the display is at the mercy of normal watchOS behavior. Lifting your wrist usually re-wakes the screen and resyncs the UI. Sometimes the orb takes a beat to redraw.
-- **First message is slower than later messages.** OpenAI's first response after `session.update` has no KV cache for your instructions and is genuinely slower than subsequent turns. On top of that, the watch suppresses mic input during the first 1.25 s of assistant playback to let the AEC (acoustic echo canceller) converge. Without this, the speaker output leaks into the mic and OpenAI's semantic VAD interrupts its own response. Result: turn 1 is laggy and may sound clipped at the very start; turns 2+ are smooth.
-- **Think Mode is noticeably slower than Fast Mode.** It is not realtime — it's a sequential pipeline (listen → transcribe → reason → synthesize → speak). Expect multi-second latency per turn. It exists for cases where the smarter model matters more than feel.
+- **Watch screen dims, audio keeps going.** When you drop your wrist on a Series 5 or later, the watch enters its always-on dim treatment for the app — screen visibly dimmed but the session keeps running thanks to `HKWorkoutSession`. The orb switches to a neutral grayscale look in this state so stale phase colors don't mislead. Lifting your wrist clears it instantly. Series 4 and earlier have no AOD; nothing software-side can change that.
+- **First message is slower than later messages.** OpenAI's first response has no KV cache for your instructions, and a 1.25 s mic-suppression window lets the AEC (acoustic echo canceller) converge before the model can hear its own speaker output. Result: turn 1 is laggy; turns 2+ are smooth.
+- **Think Mode is noticeably slower than Fast Mode.** Sequential pipeline (listen → transcribe → reason → synthesize → speak), plus an extra hop when web search runs. Expect multi-second latency per turn. It exists for cases where the smarter model matters more than feel.
+- **Echo bleed in echoey rooms.** Even with AEC + the suppression window, hard surfaces and tiny watch speakers can still produce enough self-pickup that Fast Mode interrupts itself a few seconds in. The default of barge-in **off** mostly solves this; AirPods solve it completely (no acoustic loop at all).
 - **Force-quitting the iPhone app breaks sessions.** If you swipe up the iPhone app, the watch's first tap will fail with "Open WatchGPT on your iPhone." Background suspension is fine; force-quit is not.
 - **Off-wrist or locked behavior is poor.** The watch needs to be worn and unlocked. Off-wrist can trigger PIN prompts and suspend audio.
 - **Reconnect during an in-flight turn loses the user's audio.** The phone-side bridge has exponential-backoff reconnect, but if the network drops mid-turn, your buffered speech is gone — talk again.

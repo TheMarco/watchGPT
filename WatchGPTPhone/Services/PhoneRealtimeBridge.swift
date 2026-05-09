@@ -3,6 +3,39 @@ import Foundation
 import UIKit
 import WatchConnectivity
 
+struct PhoneTranscriptLine: Identifiable, Codable, Equatable {
+    enum Speaker: String, Codable {
+        case user
+        case assistant
+    }
+
+    let id: UUID
+    let date: Date
+    let speaker: Speaker
+    let text: String
+
+    init(id: UUID = UUID(), date: Date = Date(), speaker: Speaker, text: String) {
+        self.id = id
+        self.date = date
+        self.speaker = speaker
+        self.text = text
+    }
+}
+
+struct PhoneTranscriptSession: Identifiable, Codable, Equatable {
+    let id: UUID
+    let date: Date
+    var title: String
+    var lines: [PhoneTranscriptLine]
+
+    init(id: UUID = UUID(), date: Date = Date(), title: String, lines: [PhoneTranscriptLine] = []) {
+        self.id = id
+        self.date = date
+        self.title = title
+        self.lines = lines
+    }
+}
+
 @MainActor
 final class PhoneRealtimeBridge: NSObject, ObservableObject {
     static let shared = PhoneRealtimeBridge()
@@ -14,6 +47,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     @Published private(set) var eventsFromOpenAI = 0
     @Published private(set) var lastAudioPeak: Int16 = 0
     @Published private(set) var lastWatchInputPeak: Float = 0
+    @Published private(set) var transcriptSessions: [PhoneTranscriptSession] = []
 
     private let urlSession: URLSession = {
         let config = URLSessionConfiguration.default
@@ -31,13 +65,34 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     private let maxReconnectAttempts = 4
     private var wcSession: WCSession?
     private var pendingAssistantAudio = Data()
-    private let pendingAssistantFlushBytes = 19_200
+    private let pendingAssistantFlushBytes = 9_600
     private var lastSentVoice = ""
+    private var automaticTurnDetectionEnabled = true
+    private var activeVoiceEngine: VoiceEngine = .realtime
+    private var regularAudioBuffer = Data()
+    private var regularPreSpeechBuffer = Data()
+    private var regularSilentBytes = 0
+    private var regularSpeechCandidateBytes = 0
+    private var regularSpeechActive = false
+    private var regularTurnInProgress = false
+    private var regularTurnTask: Task<Void, Never>?
+    private var regularConversationContext: [String] = []
+    private let regularSpeechThreshold: Int16 = 1_400
+    private let regularSpeechStartBytes = 9_600
+    private let regularSilenceBytes = 52_800
+    private let regularMinimumSpeechBytes = 12_000
+    private let watchAudioChunkBytes = 9_600
+    private let transcriptStorageKey = "WatchGPTPhone.transcriptSessions.v2"
+    private let legacyTranscriptStorageKey = "WatchGPTPhone.transcriptLines.v1"
+    private let maxStoredTranscriptLines = 400
+    private let maxStoredTranscriptSessions = 50
+    private var activeTranscriptSessionID: UUID?
     private var defaultsObserver: NSObjectProtocol?
 
     override init() {
         wcSession = WCSession.isSupported() ? WCSession.default : nil
         super.init()
+        loadTranscriptLines()
     }
 
     deinit {
@@ -68,11 +123,23 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         }
     }
 
-    private func startRealtime() {
+    private func startSession(engine: VoiceEngine, automaticTurnDetection: Bool) {
+        activeVoiceEngine = engine
+        switch engine {
+        case .realtime:
+            startRealtime(automaticTurnDetection: automaticTurnDetection)
+        case .gpt5:
+            startRegularVoice()
+        }
+    }
+
+    private func startRealtime(automaticTurnDetection: Bool) {
         guard webSocket == nil else {
+            automaticTurnDetectionEnabled = automaticTurnDetection
             return
         }
 
+        automaticTurnDetectionEnabled = automaticTurnDetection
         let isReconnecting = reconnectAttempts > 0
         if !isReconnecting {
             audioChunksFromWatch = 0
@@ -92,6 +159,8 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             sendErrorToWatch("Invalid realtime endpoint URL.")
             return
         }
+
+        startTranscriptSession(engine: .realtime)
 
         var request = URLRequest(url: endpoint)
         request.timeoutInterval = 30
@@ -114,6 +183,34 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         }
 
         beginKeepAlive()
+    }
+
+    private func startRegularVoice() {
+        guard !isActive else {
+            sendToWatch(.ready)
+            return
+        }
+
+        guard !PhoneConfiguration.openAIAPIKey.isEmpty else {
+            sendErrorToWatch("OpenAI API key not configured on iPhone.")
+            return
+        }
+
+        audioChunksFromWatch = 0
+        audioChunksToOpenAI = 0
+        eventsFromOpenAI = 0
+        regularAudioBuffer = Data()
+        regularPreSpeechBuffer = Data()
+        regularSilentBytes = 0
+        regularSpeechCandidateBytes = 0
+        regularSpeechActive = false
+        regularTurnInProgress = false
+        regularConversationContext = []
+        startTranscriptSession(engine: .gpt5)
+        statusText = "GPT-5.5 voice"
+        isActive = true
+        beginKeepAlive()
+        sendToWatch(.ready)
     }
 
     private func beginKeepAlive() {
@@ -167,6 +264,16 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         webSocket = nil
         pendingAssistantAudio = Data()
         lastSentVoice = ""
+        regularTurnTask?.cancel()
+        regularTurnTask = nil
+        regularAudioBuffer = Data()
+        regularPreSpeechBuffer = Data()
+        regularSilentBytes = 0
+        regularSpeechCandidateBytes = 0
+        regularSpeechActive = false
+        regularTurnInProgress = false
+        regularConversationContext = []
+        activeTranscriptSessionID = nil
         statusText = "Waiting for watch"
         isActive = false
         endKeepAlive()
@@ -220,7 +327,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self, self.isActive else { return }
-                self.startRealtime()
+                self.startRealtime(automaticTurnDetection: self.automaticTurnDetectionEnabled)
             }
         }
     }
@@ -276,6 +383,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         case "conversation.item.input_audio_transcription.completed":
             if let transcript = event["transcript"] as? String {
                 sendToWatch(.userTranscript, text: transcript)
+                appendTranscriptLine(.user, transcript)
             }
         case "response.output_audio.delta", "response.audio.delta":
             if let encoded = event["delta"] as? String,
@@ -295,10 +403,13 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         case "response.output_audio_transcript.done", "response.audio_transcript.done":
             if let transcript = event["transcript"] as? String {
                 sendToWatch(.assistantTranscriptFinal, text: transcript)
+                appendTranscriptLine(.assistant, transcript)
             }
         case "response.done":
             flushAssistantAudio()
-            sendOpenAIEvent(["type": "input_audio_buffer.clear"])
+            if !automaticTurnDetectionEnabled {
+                sendOpenAIEvent(["type": "input_audio_buffer.clear"])
+            }
             sendToWatch(.responseDone)
         default:
             break
@@ -314,13 +425,24 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
 
         if let transcript = part["transcript"] as? String {
             sendToWatch(.assistantTranscriptFinal, text: transcript)
+            appendTranscriptLine(.assistant, transcript)
         } else if let text = part["text"] as? String {
             sendToWatch(.assistantTranscriptFinal, text: text)
+            appendTranscriptLine(.assistant, text)
         }
     }
 
     private func sendSessionUpdate() {
         let voice = PhoneConfiguration.realtimeVoice
+        let turnDetection: Any = automaticTurnDetectionEnabled
+            ? [
+                "type": "semantic_vad",
+                "eagerness": PhoneConfiguration.realtimeEagerness,
+                "create_response": true,
+                "interrupt_response": true
+            ]
+            : NSNull()
+
         sendOpenAIEvent([
             "type": "session.update",
             "session": [
@@ -332,7 +454,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
                 "input_audio_transcription": [
                     "model": "gpt-4o-mini-transcribe"
                 ],
-                "turn_detection": NSNull()
+                "turn_detection": turnDetection
             ]
         ])
         lastSentVoice = voice
@@ -363,6 +485,11 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     }
 
     private func handleWatchAudio(_ data: Data) {
+        if activeVoiceEngine == .gpt5 {
+            handleRegularWatchAudio(data)
+            return
+        }
+
         audioChunksFromWatch += 1
         lastAudioPeak = peakInt16(data)
         sendOpenAIEvent([
@@ -370,6 +497,175 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             "audio": data.base64EncodedString()
         ])
         audioChunksToOpenAI += 1
+    }
+
+    private func handleRegularWatchAudio(_ data: Data) {
+        guard !regularTurnInProgress else {
+            return
+        }
+
+        audioChunksFromWatch += 1
+        let peak = peakInt16(data)
+        lastAudioPeak = peak
+
+        let hasSpeech = peak >= regularSpeechThreshold
+        if !regularSpeechActive {
+            guard updateRegularSpeechCandidate(with: data, hasSpeech: hasSpeech) else {
+                return
+            }
+        } else {
+            regularAudioBuffer.append(data)
+        }
+
+        if hasSpeech {
+            regularSilentBytes = 0
+        } else {
+            regularSilentBytes += data.count
+        }
+
+        if regularSilentBytes >= regularSilenceBytes {
+            if regularAudioBuffer.count >= regularMinimumSpeechBytes {
+                finishRegularTurn()
+            } else {
+                resetRegularSpeechDetection()
+            }
+        }
+    }
+
+    private func resetRegularSpeechDetection() {
+        regularAudioBuffer = Data()
+        regularPreSpeechBuffer = Data()
+        regularSilentBytes = 0
+        regularSpeechCandidateBytes = 0
+        regularSpeechActive = false
+        if !regularTurnInProgress {
+            statusText = "GPT-5.5 voice"
+        }
+    }
+
+    private func finishRegularTurn() {
+        guard regularSpeechActive else {
+            return
+        }
+
+        regularSpeechActive = false
+        regularSilentBytes = 0
+        regularSpeechCandidateBytes = 0
+        regularPreSpeechBuffer = Data()
+        let audio = regularAudioBuffer
+        regularAudioBuffer = Data()
+        sendToWatch(.speechStopped)
+
+        guard !regularTurnInProgress else {
+            return
+        }
+
+        regularTurnInProgress = true
+        regularTurnTask = Task { [weak self] in
+            await self?.processRegularTurn(audio)
+        }
+    }
+
+    private func processRegularTurn(_ pcmAudio: Data) async {
+        guard !pcmAudio.isEmpty else {
+            return
+        }
+
+        await MainActor.run {
+            statusText = "Transcribing"
+        }
+
+        do {
+            let transcript = try await transcribePCM16(pcmAudio)
+            let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedTranscript.isEmpty else {
+                await MainActor.run {
+                    regularTurnInProgress = false
+                    statusText = "GPT-5.5 voice"
+                    sendToWatch(.responseDone)
+                }
+                return
+            }
+
+            await MainActor.run {
+                eventsFromOpenAI += 1
+                sendToWatch(.userTranscript, text: trimmedTranscript)
+                appendTranscriptLine(.user, trimmedTranscript)
+                statusText = "Thinking"
+            }
+
+            let answer = try await createRegularResponse(for: trimmedTranscript)
+            let trimmedAnswer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            await MainActor.run {
+                eventsFromOpenAI += 1
+                sendToWatch(.assistantTranscriptFinal, text: trimmedAnswer)
+                appendTranscriptLine(.assistant, trimmedAnswer)
+                rememberRegularTurn(user: trimmedTranscript, assistant: trimmedAnswer)
+                statusText = "Speaking"
+            }
+
+            let speech = try await synthesizeSpeech(trimmedAnswer)
+            await sendAudioToWatchInChunks(speech)
+
+            await MainActor.run {
+                eventsFromOpenAI += 1
+                sendToWatch(.responseDone)
+                regularTurnInProgress = false
+                regularTurnTask = nil
+                statusText = "GPT-5.5 voice"
+            }
+        } catch is CancellationError {
+            await MainActor.run {
+                regularTurnInProgress = false
+                regularTurnTask = nil
+                statusText = isActive ? "GPT-5.5 voice" : "Waiting for watch"
+            }
+        } catch {
+            await MainActor.run {
+                regularTurnInProgress = false
+                regularTurnTask = nil
+                if !isCancellationError(error) {
+                    sendErrorToWatch("GPT-5.5 voice failed: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func updateRegularSpeechCandidate(with data: Data, hasSpeech: Bool) -> Bool {
+        guard hasSpeech else {
+            regularSpeechCandidateBytes = 0
+            regularPreSpeechBuffer = Data()
+            return false
+        }
+
+        regularSpeechCandidateBytes += data.count
+        regularPreSpeechBuffer.append(data)
+
+        if regularPreSpeechBuffer.count > regularSpeechStartBytes * 2 {
+            regularPreSpeechBuffer = regularPreSpeechBuffer.suffixData(regularSpeechStartBytes * 2)
+        }
+
+        guard regularSpeechCandidateBytes >= regularSpeechStartBytes else {
+            return false
+        }
+
+        regularSpeechActive = true
+        regularAudioBuffer = regularPreSpeechBuffer
+        regularPreSpeechBuffer = Data()
+        regularSilentBytes = 0
+        regularSpeechCandidateBytes = 0
+        sendToWatch(.speechStarted)
+        statusText = "Listening"
+        return true
+    }
+
+    private func rememberRegularTurn(user: String, assistant: String) {
+        regularConversationContext.append("User: \(user)")
+        regularConversationContext.append("Assistant: \(assistant)")
+        if regularConversationContext.count > 12 {
+            regularConversationContext = Array(regularConversationContext.suffix(12))
+        }
     }
 
     private func peakInt16(_ data: Data) -> Int16 {
@@ -407,6 +703,23 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         wcSession.sendMessageData(data, replyHandler: nil, errorHandler: nil)
     }
 
+    private func sendAudioToWatchInChunks(_ data: Data) async {
+        var offset = 0
+        while offset < data.count {
+            if Task.isCancelled {
+                return
+            }
+
+            let end = min(offset + watchAudioChunkBytes, data.count)
+            sendAudioToWatch(data.subdata(in: offset..<end))
+            offset = end
+
+            if offset < data.count {
+                try? await Task.sleep(nanoseconds: 8_000_000)
+            }
+        }
+    }
+
     private func bufferAssistantAudio(_ data: Data) {
         pendingAssistantAudio.append(data)
         if pendingAssistantAudio.count >= pendingAssistantFlushBytes {
@@ -426,6 +739,323 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     private func sendErrorToWatch(_ message: String) {
         sendToWatch(.error, text: message)
         statusText = "Error: \(message)"
+    }
+
+    func clearTranscriptSessions() {
+        transcriptSessions = []
+        activeTranscriptSessionID = nil
+        UserDefaults.standard.removeObject(forKey: transcriptStorageKey)
+        UserDefaults.standard.removeObject(forKey: legacyTranscriptStorageKey)
+    }
+
+    func deleteTranscriptSession(id: UUID) {
+        transcriptSessions.removeAll { $0.id == id }
+        if activeTranscriptSessionID == id {
+            activeTranscriptSessionID = nil
+        }
+        saveTranscriptSessions()
+    }
+
+    private func appendTranscriptLine(_ speaker: PhoneTranscriptLine.Speaker, _ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+
+        let sessionID = ensureActiveTranscriptSession()
+        guard let sessionIndex = transcriptSessions.firstIndex(where: { $0.id == sessionID }) else {
+            return
+        }
+
+        if let last = transcriptSessions[sessionIndex].lines.last,
+           last.speaker == speaker,
+           last.text == trimmed,
+           Date().timeIntervalSince(last.date) < 2
+        {
+            return
+        }
+
+        transcriptSessions[sessionIndex].lines.append(PhoneTranscriptLine(speaker: speaker, text: trimmed))
+        if transcriptSessions[sessionIndex].lines.count > maxStoredTranscriptLines {
+            transcriptSessions[sessionIndex].lines = Array(transcriptSessions[sessionIndex].lines.suffix(maxStoredTranscriptLines))
+        }
+
+        if speaker == .user, transcriptSessions[sessionIndex].title.hasSuffix("chat") {
+            transcriptSessions[sessionIndex].title = makeTranscriptTitle(from: trimmed)
+        }
+        saveTranscriptSessions()
+    }
+
+    private func startTranscriptSession(engine: VoiceEngine) {
+        let title = engine == .gpt5 ? "GPT-5.5 chat" : "Realtime chat"
+        let session = PhoneTranscriptSession(title: title)
+        transcriptSessions.append(session)
+        activeTranscriptSessionID = session.id
+        if transcriptSessions.count > maxStoredTranscriptSessions {
+            transcriptSessions = Array(transcriptSessions.suffix(maxStoredTranscriptSessions))
+        }
+        saveTranscriptSessions()
+    }
+
+    private func ensureActiveTranscriptSession() -> UUID {
+        if let activeTranscriptSessionID,
+           transcriptSessions.contains(where: { $0.id == activeTranscriptSessionID })
+        {
+            return activeTranscriptSessionID
+        }
+
+        let session = PhoneTranscriptSession(title: activeVoiceEngine == .gpt5 ? "GPT-5.5 chat" : "Realtime chat")
+        transcriptSessions.append(session)
+        activeTranscriptSessionID = session.id
+        saveTranscriptSessions()
+        return session.id
+    }
+
+    private func makeTranscriptTitle(from text: String) -> String {
+        let words = text
+            .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .prefix(8)
+            .map(String.init)
+        var title = words.joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if title.count > 54 {
+            title = String(title.prefix(51)).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+        }
+
+        return title.isEmpty ? "Voice chat" : title
+    }
+
+    private func loadTranscriptLines() {
+        if let data = UserDefaults.standard.data(forKey: transcriptStorageKey),
+           let sessions = try? JSONDecoder().decode([PhoneTranscriptSession].self, from: data)
+        {
+            transcriptSessions = sessions
+            return
+        }
+
+        if let data = UserDefaults.standard.data(forKey: legacyTranscriptStorageKey),
+           let lines = try? JSONDecoder().decode([PhoneTranscriptLine].self, from: data),
+           !lines.isEmpty
+        {
+            transcriptSessions = [
+                PhoneTranscriptSession(title: "Imported transcript", lines: lines)
+            ]
+            saveTranscriptSessions()
+        }
+    }
+
+    private func saveTranscriptSessions() {
+        guard let data = try? JSONEncoder().encode(transcriptSessions) else {
+            return
+        }
+
+        UserDefaults.standard.set(data, forKey: transcriptStorageKey)
+    }
+
+    private func transcribePCM16(_ pcmAudio: Data) async throws -> String {
+        let wav = makeWAVData(fromPCM16: pcmAudio)
+        let boundary = "WatchGPT-\(UUID().uuidString)"
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/audio/transcriptions")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(PhoneConfiguration.openAIAPIKey)", forHTTPHeaderField: "authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "content-type")
+
+        var body = Data()
+        body.appendMultipartField(name: "model", value: PhoneConfiguration.transcriptionModel, boundary: boundary)
+        body.appendMultipartFile(
+            name: "file",
+            filename: "watchgpt.wav",
+            contentType: "audio/wav",
+            data: wav,
+            boundary: boundary
+        )
+        body.append(Data("--\(boundary)--\r\n".utf8))
+
+        let (data, response) = try await urlSession.upload(for: request, from: body)
+        try validateHTTPResponse(response, data: data)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let text = json["text"] as? String
+        else {
+            throw PhoneRealtimeBridgeError.invalidResponse
+        }
+
+        return text
+    }
+
+    private func createRegularResponse(for transcript: String) async throws -> String {
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/responses")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(PhoneConfiguration.openAIAPIKey)", forHTTPHeaderField: "authorization")
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+
+        let context = regularConversationContext.suffix(8).joined(separator: "\n")
+        let input: String
+        if context.isEmpty {
+            input = transcript
+        } else {
+            input = "\(context)\nUser: \(transcript)"
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": PhoneConfiguration.regularVoiceModel,
+            "reasoning": [
+                "effort": PhoneConfiguration.regularReasoningEffort
+            ],
+            "instructions": PhoneConfiguration.realtimeInstructions,
+            "input": input
+        ])
+
+        let (data, response) = try await urlSession.data(for: request)
+        try validateHTTPResponse(response, data: data)
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw PhoneRealtimeBridgeError.invalidResponse
+        }
+
+        if let outputText = json["output_text"] as? String {
+            return outputText
+        }
+
+        if let output = json["output"] as? [[String: Any]] {
+            let parts = output.compactMap { item -> String? in
+                guard let content = item["content"] as? [[String: Any]] else {
+                    return nil
+                }
+                return content.compactMap { part in
+                    part["text"] as? String
+                }.joined()
+            }
+            let joined = parts.joined(separator: "\n")
+            if !joined.isEmpty {
+                return joined
+            }
+        }
+
+        throw PhoneRealtimeBridgeError.invalidResponse
+    }
+
+    private func synthesizeSpeech(_ text: String) async throws -> Data {
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/audio/speech")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(PhoneConfiguration.openAIAPIKey)", forHTTPHeaderField: "authorization")
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": PhoneConfiguration.ttsModel,
+            "voice": PhoneConfiguration.ttsVoice,
+            "input": text,
+            "response_format": "pcm",
+            "instructions": "Speak naturally and warmly. Keep the delivery concise and conversational."
+        ])
+
+        let (data, response) = try await urlSession.data(for: request)
+        try validateHTTPResponse(response, data: data)
+        return data
+    }
+
+    private func validateHTTPResponse(_ response: URLResponse, data: Data) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw PhoneRealtimeBridgeError.invalidResponse
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let message: String
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = json["error"] as? [String: Any],
+               let text = error["message"] as? String {
+                message = text
+            } else {
+                message = HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            }
+            throw PhoneRealtimeBridgeError.openAI(message)
+        }
+    }
+
+    private func isCancellationError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+
+    private func makeWAVData(fromPCM16 pcm: Data) -> Data {
+        var data = Data()
+        let sampleRate: UInt32 = 24_000
+        let channels: UInt16 = 1
+        let bitsPerSample: UInt16 = 16
+        let byteRate = sampleRate * UInt32(channels) * UInt32(bitsPerSample / 8)
+        let blockAlign = channels * (bitsPerSample / 8)
+        let chunkSize = UInt32(36 + pcm.count)
+
+        data.appendASCII("RIFF")
+        data.appendLittleEndian(chunkSize)
+        data.appendASCII("WAVE")
+        data.appendASCII("fmt ")
+        data.appendLittleEndian(UInt32(16))
+        data.appendLittleEndian(UInt16(1))
+        data.appendLittleEndian(channels)
+        data.appendLittleEndian(sampleRate)
+        data.appendLittleEndian(byteRate)
+        data.appendLittleEndian(blockAlign)
+        data.appendLittleEndian(bitsPerSample)
+        data.appendASCII("data")
+        data.appendLittleEndian(UInt32(pcm.count))
+        data.append(pcm)
+        return data
+    }
+}
+
+private enum PhoneRealtimeBridgeError: LocalizedError {
+    case invalidResponse
+    case openAI(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "OpenAI returned an unexpected response."
+        case .openAI(let message):
+            return message
+        }
+    }
+}
+
+private extension Data {
+    mutating func appendASCII(_ string: String) {
+        append(Data(string.utf8))
+    }
+
+    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
+        var littleEndian = value.littleEndian
+        Swift.withUnsafeBytes(of: &littleEndian) { bytes in
+            append(contentsOf: bytes)
+        }
+    }
+
+    mutating func appendMultipartField(name: String, value: String, boundary: String) {
+        append(Data("--\(boundary)\r\n".utf8))
+        append(Data("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
+        append(Data("\(value)\r\n".utf8))
+    }
+
+    mutating func appendMultipartFile(
+        name: String,
+        filename: String,
+        contentType: String,
+        data: Data,
+        boundary: String
+    ) {
+        append(Data("--\(boundary)\r\n".utf8))
+        append(Data("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n".utf8))
+        append(Data("Content-Type: \(contentType)\r\n\r\n".utf8))
+        append(data)
+        append(Data("\r\n".utf8))
+    }
+
+    func suffixData(_ count: Int) -> Data {
+        guard self.count > count else {
+            return self
+        }
+
+        return subdata(in: index(endIndex, offsetBy: -count)..<endIndex)
     }
 }
 
@@ -465,7 +1095,10 @@ extension PhoneRealtimeBridge: WCSessionDelegate {
 
             switch type {
             case .start:
-                self.startRealtime()
+                let automaticTurnDetection = message[RealtimeMessageKey.automaticTurnDetection] as? Bool ?? true
+                let engineRaw = message[RealtimeMessageKey.voiceEngine] as? String ?? VoiceEngine.realtime.rawValue
+                let engine = VoiceEngine(rawValue: engineRaw) ?? .realtime
+                self.startSession(engine: engine, automaticTurnDetection: automaticTurnDetection)
             case .stop:
                 self.stopRealtime()
             case .commit:
@@ -483,6 +1116,15 @@ extension PhoneRealtimeBridge: WCSessionDelegate {
     }
 
     private func commitUserTurn() {
+        if activeVoiceEngine == .gpt5 {
+            finishRegularTurn()
+            return
+        }
+
+        guard !automaticTurnDetectionEnabled else {
+            return
+        }
+
         guard webSocket != nil else {
             handleSocketLost(reason: "commit while socket was down")
             return

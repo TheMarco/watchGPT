@@ -18,10 +18,27 @@ enum PhoneConfiguration {
     ]
 
     static let defaultRealtimeVoice = "marin"
+    static let availableTTSVoices = [
+        "alloy",
+        "ash",
+        "ballad",
+        "coral",
+        "echo",
+        "fable",
+        "onyx",
+        "nova",
+        "sage",
+        "shimmer",
+        "verse"
+    ]
     static let realtimeModel = "gpt-realtime"
+    static let regularVoiceModel = "gpt-5.5"
+    static let regularReasoningEffort = "low"
+    static let transcriptionModel = "gpt-4o-mini-transcribe"
+    static let ttsModel = "gpt-4o-mini-tts"
     static let realtimeEagerness = "low"
     static let realtimeInstructions =
-        "You are WatchGPT, a fast, warm realtime voice assistant running on Apple Watch. Speak naturally, keep replies concise unless asked for depth, and avoid long lists unless they are genuinely useful."
+        "You are WatchGPT, a fast, warm realtime voice assistant running on Apple Watch. You only receive microphone audio and text transcripts. You do not have camera, screen, location, sensor, or visual access, so never claim you can see the user, their room, their watch, or anything around them. If asked what you can perceive, say you can hear the user's voice only. Speak naturally, keep replies concise unless asked for depth, and avoid long lists unless they are genuinely useful."
 
     private static let openAIAPIKeyInfoKey = "WATCHGPT_OPENAI_API_KEY"
 
@@ -49,6 +66,11 @@ enum PhoneConfiguration {
         }
 
         return stored
+    }
+
+    static var ttsVoice: String {
+        let voice = realtimeVoice
+        return availableTTSVoices.contains(voice) ? voice : "coral"
     }
 
     static func registerDefaults() {

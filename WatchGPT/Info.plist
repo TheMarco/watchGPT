@@ -24,6 +24,10 @@
 	<false/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>WatchGPT streams microphone audio to the iPhone companion app for realtime voice conversations.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>WatchGPT uses a lightweight active session so realtime voice can keep listening when your wrist lowers.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>WatchGPT starts a lightweight workout-style session to keep realtime voice available while the watch display dims.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -34,6 +38,7 @@
 	<key>WKBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>workout-processing</string>
 	</array>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>dev.watchgpt.app</string>

@@ -11,6 +11,7 @@
 		308F22188D6E829FEE261848 /* RealtimeMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE733AC4756CF4216F3721D7 /* RealtimeMessages.swift */; };
 		3EDF02182749E58B0BF35758 /* PhoneConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2CD629AA5CFB5B1F01DCBF8 /* PhoneConfiguration.swift */; };
 		506D3AF53B9154C929176518 /* WatchGPTPhoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9912439D9B78572153C63A6F /* WatchGPTPhoneApp.swift */; };
+		5F0D53269DEB4DDCB10F0C4D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 82FECC0B63A41BCA479439C3 /* Assets.xcassets */; };
 		5267D89DA87F8300DBA942E6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19B334EEB454E1D4B469D02 /* SettingsView.swift */; };
 		532870553778A481D5BC3163 /* RealtimeTranscriptLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3393270746CA1B5AEA63EC5 /* RealtimeTranscriptLine.swift */; };
 		5FB6FF8705F1B750BF68FE17 /* RealtimeTranscriptBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81BC46B8440A08E21473EEA2 /* RealtimeTranscriptBubble.swift */; };
@@ -214,6 +215,7 @@
 			buildConfigurationList = C682EA02394898BBEF0BA309 /* Build configuration list for PBXNativeTarget "WatchGPTPhone" */;
 			buildPhases = (
 				B9E15359719778B503F5ACC1 /* Sources */,
+				51B1474947F64696BB072559 /* Resources */,
 				923F2CF28634B8D576B3BEE3 /* Embed Watch Content */,
 			);
 			buildRules = (
@@ -283,6 +285,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		51B1474947F64696BB072559 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5F0D53269DEB4DDCB10F0C4D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		71AAB15CB55A51BC9AA78A1B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -338,7 +348,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 677BADE0A0BD3365B19B9858 /* WatchGPTPhone.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = PhoneAppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -425,7 +435,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 677BADE0A0BD3365B19B9858 /* WatchGPTPhone.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = PhoneAppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -506,6 +516,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = WatchGPT/WatchGPT.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
@@ -526,6 +537,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = WatchGPT/WatchGPT.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3ML6V62AF5;

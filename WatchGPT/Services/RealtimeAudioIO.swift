@@ -46,7 +46,7 @@ final class RealtimeAudioIO {
         }
 
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .measurement)
+        try session.setCategory(.playAndRecord, mode: .voiceChat)
         try session.setActive(true)
 
         engine.attach(playerNode)
@@ -56,6 +56,8 @@ final class RealtimeAudioIO {
 
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
+        try? inputNode.setVoiceProcessingEnabled(true)
+        try? engine.outputNode.setVoiceProcessingEnabled(true)
 
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw RealtimeAudioIOError.inputFormatUnavailable

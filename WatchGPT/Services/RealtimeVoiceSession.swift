@@ -1,5 +1,6 @@
 import AVFAudio
 import Foundation
+import HealthKit
 import WatchConnectivity
 import WatchKit
 
@@ -50,10 +51,13 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     private var hasStartedAudio = false
     private var assistantDraft = ""
     private var playbackEndsAt = Date.distantPast
-    private var runtimeSession: WKExtendedRuntimeSession?
+    private var assistantPlaybackStartedAt = Date.distantPast
+    private let runtimeKeeper = WatchRuntimeKeeper()
     private var watchdogTask: Task<Void, Never>?
     private var phaseEnteredAt = Date()
     private var awaitingResponseSince: Date?
+    private var automaticConversationEnabledForSession = true
+    private var voiceEngineForSession: VoiceEngine = .realtime
     private let responseTimeout: TimeInterval = 12
 
     override init() {
@@ -70,7 +74,10 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         case .connecting:
             return "Connecting"
         case .connected:
-            return "Hold to talk"
+            if voiceEngineForSession == .gpt5 {
+                return isAutomaticConversationEnabled ? "GPT-5.5 ready" : "GPT-5.5 hold"
+            }
+            return isAutomaticConversationEnabled ? "Ready to chat" : "Hold to talk"
         case .listening:
             return "Listening"
         case .speaking:
@@ -80,6 +87,14 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
 
     var isConnected: Bool {
         phase != .disconnected
+    }
+
+    var isAutomaticConversationEnabled: Bool {
+        if phase == .disconnected {
+            return UserDefaults.standard.bool(forKey: AppConfiguration.automaticConversationKey, default: true)
+        }
+
+        return automaticConversationEnabledForSession
     }
 
     func start() {
@@ -102,36 +117,21 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         latestUserTranscript = ""
         latestAssistantTranscript = ""
         assistantDraft = ""
-
-        startRuntimeSession()
-        startWatchdog()
-
-        wcSession.sendMessage(
-            RealtimeMessage.encode(.start),
-            replyHandler: nil,
-            errorHandler: { [weak self] error in
-                Task { @MainActor in
-                    self?.errorMessage = "Could not reach iPhone: \(error.localizedDescription)"
-                    self?.stop()
-                }
-            }
+        automaticConversationEnabledForSession = UserDefaults.standard.bool(
+            forKey: AppConfiguration.automaticConversationKey,
+            default: true
         )
-    }
+        let engineValue = UserDefaults.standard.string(forKey: AppConfiguration.voiceEngineKey) ?? VoiceEngine.realtime.rawValue
+        voiceEngineForSession = VoiceEngine(rawValue: engineValue) ?? .realtime
 
-    private func startRuntimeSession() {
-        guard runtimeSession == nil else {
-            return
-        }
-
-        let session = WKExtendedRuntimeSession()
-        session.delegate = self
-        session.start()
-        runtimeSession = session
-    }
-
-    private func stopRuntimeSession() {
-        runtimeSession?.invalidate()
-        runtimeSession = nil
+        runtimeKeeper.start(
+            useWorkoutRuntime: UserDefaults.standard.bool(
+                forKey: AppConfiguration.workoutRuntimeKey,
+                default: true
+            )
+        )
+        startWatchdog()
+        sendStartToPhone()
     }
 
     func stop() {
@@ -142,12 +142,28 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         )
 
         audioIO.stop()
-        stopRuntimeSession()
+        runtimeKeeper.stop()
         stopWatchdog()
         hasStartedAudio = false
         playbackEndsAt = .distantPast
+        assistantPlaybackStartedAt = .distantPast
         phase = .disconnected
-        WKInterfaceDevice.current().play(.stop)
+    }
+
+    private func sendStartToPhone() {
+        wcSession?.sendMessage(
+            RealtimeMessage.encode(.start, payload: [
+                RealtimeMessageKey.automaticTurnDetection: automaticConversationEnabledForSession,
+                RealtimeMessageKey.voiceEngine: voiceEngineForSession.rawValue
+            ]),
+            replyHandler: nil,
+            errorHandler: { [weak self] error in
+                Task { @MainActor in
+                    self?.errorMessage = "Could not reach iPhone: \(error.localizedDescription)"
+                    self?.stop()
+                }
+            }
+        )
     }
 
     func resetTranscript() {
@@ -158,6 +174,12 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
 
     func beginTurn() {
+        if isAutomaticConversationEnabled {
+            recoverToConnected()
+            phase = .listening
+            return
+        }
+
         if phase == .speaking || phase == .connecting {
             recoverToConnected()
         }
@@ -170,7 +192,6 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         audioIO.stopPlayback()
         audioIO.restartIfNeeded()
         phase = .listening
-        WKInterfaceDevice.current().play(.start)
     }
 
     func recoverToConnected() {
@@ -215,7 +236,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         switch phase {
         case .speaking:
             if Date() >= playbackEndsAt && elapsed > 6 {
-                phase = .connected
+                phase = isAutomaticConversationEnabled ? .listening : .connected
             }
         case .connecting:
             if elapsed > 12 {
@@ -223,7 +244,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
                 stop()
             }
         case .listening:
-            if elapsed > 60 {
+            if !isAutomaticConversationEnabled && elapsed > 60 {
                 phase = .connected
             }
         case .connected, .disconnected:
@@ -232,11 +253,14 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
 
     func commitTurn() {
+        guard !isAutomaticConversationEnabled else {
+            return
+        }
+
         guard phase == .listening else {
             return
         }
         phase = .connected
-        WKInterfaceDevice.current().play(.click)
         awaitingResponseSince = Date()
 
         guard let wcSession else { return }
@@ -260,10 +284,22 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
 
         switch type {
         case .ready:
-            phase = .connected
-            startAudioIfNeeded()
+            if hasStartedAudio, isAutomaticConversationEnabled {
+                phase = .listening
+            } else {
+                phase = .connected
+                startAudioIfNeeded()
+            }
         case .speechStarted:
             awaitingResponseSince = nil
+            if isAutomaticConversationEnabled {
+                if isInPlaybackEchoWindow() {
+                    return
+                }
+                audioIO.stopPlayback()
+                playbackEndsAt = .distantPast
+                phase = .listening
+            }
         case .speechStopped:
             break
         case .userTranscript:
@@ -287,7 +323,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         case .responseDone:
             awaitingResponseSince = nil
             if hasStartedAudio, Date() >= playbackEndsAt {
-                phase = .connected
+                phase = isAutomaticConversationEnabled ? .listening : .connected
             }
         case .error:
             if let text = message[RealtimeMessageKey.text] as? String {
@@ -295,7 +331,6 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             } else {
                 errorMessage = RealtimeVoiceSessionError.disconnected.localizedDescription
             }
-            WKInterfaceDevice.current().play(.failure)
             stop()
         default:
             break
@@ -303,7 +338,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
 
     private func handlePhoneAudio(_ data: Data) {
-        if phase == .listening || phase == .disconnected {
+        if (!isAutomaticConversationEnabled && phase == .listening) || phase == .disconnected {
             return
         }
         awaitingResponseSince = nil
@@ -311,8 +346,30 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
 
     private func sendInputAudio(_ data: Data, inputPeak: Float) {
-        guard hasStartedAudio, phase == .listening else {
+        guard hasStartedAudio else {
             return
+        }
+
+        if isAutomaticConversationEnabled {
+            if voiceEngineForSession == .gpt5, phase == .speaking {
+                return
+            }
+
+            guard phase != .disconnected, phase != .connecting else {
+                return
+            }
+
+            // Suppress mic during early assistant playback so OpenAI's semantic VAD
+            // doesn't see speaker echo (AEC unconverged on turn 1) and fire
+            // interrupt_response. Window matches shouldIgnoreLikelyPlaybackEcho;
+            // tap-to-interrupt clears playbackEndsAt so it bypasses this guard.
+            if voiceEngineForSession == .realtime, isInPlaybackEchoWindow() {
+                return
+            }
+        } else {
+            guard phase == .listening else {
+                return
+            }
         }
 
         guard let wcSession, wcSession.isReachable else {
@@ -330,7 +387,11 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
 
     private func playAssistantAudio(_ audio: Data, prefersOneShotPlayer: Bool) {
+        if phase != .speaking {
+            assistantPlaybackStartedAt = Date()
+        }
         phase = .speaking
+
         let trailingPad: TimeInterval = 0.35
         let previousBufferEnd = max(playbackEndsAt.addingTimeInterval(-trailingPad), Date())
         let bufferEnd = previousBufferEnd.addingTimeInterval(estimatedPlaybackDuration(forPCM16: audio))
@@ -340,6 +401,15 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         if UserDefaults.standard.bool(forKey: AppConfiguration.speakRepliesKey, default: true) {
             audioIO.playPCM16(audio, prefersOneShotPlayer: prefersOneShotPlayer)
         }
+    }
+
+    private func isInPlaybackEchoWindow() -> Bool {
+        guard phase == .speaking else {
+            return false
+        }
+
+        let playbackAge = Date().timeIntervalSince(assistantPlaybackStartedAt)
+        return playbackAge < 1.25 && Date() < playbackEndsAt
     }
 
     private func markConnectedAfterPlayback() {
@@ -357,7 +427,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
                     return
                 }
 
-                self.phase = .connected
+                self.phase = self.isAutomaticConversationEnabled ? .listening : .connected
             }
         }
     }
@@ -395,7 +465,9 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
                     }
 
                     self.hasStartedAudio = true
-                    WKInterfaceDevice.current().play(.start)
+                    if self.isAutomaticConversationEnabled, self.phase == .connected {
+                        self.phase = .listening
+                    }
                 } catch {
                     self.errorMessage = error.localizedDescription
                     self.stop()
@@ -415,38 +487,6 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
 
         if transcriptLines.count > AppConfiguration.maxStoredMessages {
             transcriptLines = Array(transcriptLines.suffix(AppConfiguration.maxStoredMessages))
-        }
-    }
-}
-
-extension RealtimeVoiceSession: WKExtendedRuntimeSessionDelegate {
-    nonisolated func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
-        print("[WatchGPT] runtime session started")
-    }
-
-    nonisolated func extendedRuntimeSessionWillExpire(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
-        print("[WatchGPT] runtime session about to expire")
-        Task { @MainActor [weak self] in
-            guard let self, self.phase != .disconnected else { return }
-            self.runtimeSession = nil
-            self.startRuntimeSession()
-        }
-    }
-
-    nonisolated func extendedRuntimeSession(
-        _ extendedRuntimeSession: WKExtendedRuntimeSession,
-        didInvalidateWith reason: WKExtendedRuntimeSessionInvalidationReason,
-        error: Error?
-    ) {
-        let reasonValue = reason.rawValue
-        let errorString = error?.localizedDescription ?? "nil"
-        Task { @MainActor [weak self] in
-            print("[WatchGPT] runtime session invalidated, reason=\(reasonValue), error=\(errorString)")
-            guard let self else { return }
-            self.runtimeSession = nil
-            if self.phase != .disconnected {
-                self.startRuntimeSession()
-            }
         }
     }
 }
@@ -476,6 +516,174 @@ extension RealtimeVoiceSession: WCSessionDelegate {
         let reachable = session.isReachable
         Task { @MainActor in
             print("[WatchGPT] reachability changed: \(reachable)")
+        }
+    }
+}
+
+@MainActor
+private final class WatchRuntimeKeeper: NSObject {
+    private var healthStore: HKHealthStore?
+    private var runtimeSession: WKExtendedRuntimeSession?
+    private var workoutSession: HKWorkoutSession?
+    private var isActive = false
+    private var isRequestingWorkoutAuthorization = false
+
+    func start(useWorkoutRuntime: Bool) {
+        guard !isActive else {
+            return
+        }
+
+        isActive = true
+        startExtendedRuntimeSession()
+        if useWorkoutRuntime {
+            startWorkoutRuntime()
+        }
+    }
+
+    func stop() {
+        isActive = false
+        isRequestingWorkoutAuthorization = false
+
+        runtimeSession?.invalidate()
+        runtimeSession = nil
+
+        workoutSession?.end()
+        workoutSession = nil
+    }
+
+    private func startExtendedRuntimeSession() {
+        guard runtimeSession == nil else {
+            return
+        }
+
+        let session = WKExtendedRuntimeSession()
+        session.delegate = self
+        session.start()
+        runtimeSession = session
+    }
+
+    private func startWorkoutRuntime() {
+        guard HKHealthStore.isHealthDataAvailable(),
+              workoutSession == nil,
+              !isRequestingWorkoutAuthorization
+        else {
+            print("[WatchGPT] workout runtime skipped")
+            return
+        }
+
+        let store = healthStore ?? HKHealthStore()
+        healthStore = store
+        isRequestingWorkoutAuthorization = true
+
+        store.requestAuthorization(toShare: [HKObjectType.workoutType()], read: []) { [weak self] success, error in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+
+                self.isRequestingWorkoutAuthorization = false
+
+                guard self.isActive else {
+                    return
+                }
+
+                guard success, error == nil else {
+                    let errorText = error?.localizedDescription ?? "authorization not granted"
+                    print("[WatchGPT] workout runtime unavailable: \(errorText)")
+                    return
+                }
+
+                self.createWorkoutSession(with: store)
+            }
+        }
+    }
+
+    private func createWorkoutSession(with store: HKHealthStore) {
+        guard workoutSession == nil else {
+            return
+        }
+
+        let configuration = HKWorkoutConfiguration()
+        configuration.activityType = .mindAndBody
+        configuration.locationType = .unknown
+
+        do {
+            let session = try HKWorkoutSession(healthStore: store, configuration: configuration)
+            session.delegate = self
+            workoutSession = session
+            session.startActivity(with: Date())
+            print("[WatchGPT] workout runtime started")
+        } catch {
+            print("[WatchGPT] workout runtime failed: \(error.localizedDescription)")
+        }
+    }
+}
+
+extension WatchRuntimeKeeper: WKExtendedRuntimeSessionDelegate {
+    nonisolated func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
+        print("[WatchGPT] extended runtime session started")
+    }
+
+    nonisolated func extendedRuntimeSessionWillExpire(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
+        print("[WatchGPT] extended runtime session about to expire")
+        Task { @MainActor [weak self] in
+            guard let self, self.isActive else {
+                return
+            }
+
+            self.runtimeSession = nil
+            self.startExtendedRuntimeSession()
+        }
+    }
+
+    nonisolated func extendedRuntimeSession(
+        _ extendedRuntimeSession: WKExtendedRuntimeSession,
+        didInvalidateWith reason: WKExtendedRuntimeSessionInvalidationReason,
+        error: Error?
+    ) {
+        let reasonValue = reason.rawValue
+        let errorString = error?.localizedDescription ?? "nil"
+        Task { @MainActor [weak self] in
+            print("[WatchGPT] extended runtime invalidated, reason=\(reasonValue), error=\(errorString)")
+            guard let self else {
+                return
+            }
+
+            self.runtimeSession = nil
+            if self.isActive {
+                self.startExtendedRuntimeSession()
+            }
+        }
+    }
+}
+
+extension WatchRuntimeKeeper: HKWorkoutSessionDelegate {
+    nonisolated func workoutSession(
+        _ workoutSession: HKWorkoutSession,
+        didChangeTo toState: HKWorkoutSessionState,
+        from fromState: HKWorkoutSessionState,
+        date: Date
+    ) {
+        Task { @MainActor [weak self] in
+            print("[WatchGPT] workout runtime state \(fromState.rawValue) -> \(toState.rawValue)")
+            guard let self, self.isActive, toState == .ended else {
+                return
+            }
+
+            self.workoutSession = nil
+            self.startWorkoutRuntime()
+        }
+    }
+
+    nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
+        Task { @MainActor [weak self] in
+            print("[WatchGPT] workout runtime failed: \(error.localizedDescription)")
+            guard let self, self.isActive else {
+                return
+            }
+
+            self.workoutSession = nil
+            self.startWorkoutRuntime()
         }
     }
 }

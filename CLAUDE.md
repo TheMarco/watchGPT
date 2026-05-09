@@ -1,147 +1,239 @@
-# WatchGPT
+# WatchGPT Handoff
 
-Realtime ChatGPT voice for Apple Watch. **Two-target SwiftUI project**: a watchOS app captures/plays audio, an iOS companion app holds the OpenAI Realtime WebSocket. They talk over `WatchConnectivity`. Sideload only — never distribute a build (the iPhone build embeds your live API key).
+Realtime-ish ChatGPT voice for Apple Watch. This is a two-target SwiftUI project: the watch app captures/plays audio, and the iPhone companion app owns OpenAI networking. They communicate over `WatchConnectivity`.
+
+This is a personal sideloading project. Do not treat it as App Store ready. The iPhone build can embed a live OpenAI API key through local xcconfig plumbing.
 
 Repo: https://github.com/TheMarco/watchGPT (private).
 
-## Why two targets
+## Current State
 
-The watchOS networking stack does not let third-party apps open arbitrary outbound TLS WebSockets — empirically tested with `URLSessionWebSocketTask`, `URLSession+waitsForConnectivity`, and `NWConnection+NWProtocolWebSocket`. All fail (`-1009`, `cancelled`, or `ENETDOWN [POSIX 50]`) even with the watch on its own cellular and Apple's apps clearly passing data. HTTPS data tasks succeed because they're routed through Apple-managed paths a WS task cannot use. The iPhone target sidesteps this entirely by holding the WebSocket and relaying audio over Bluetooth.
+- The watch cannot reliably run the OpenAI WebSocket directly. The iPhone companion is required.
+- The watch app supports two voice engines:
+  - **Realtime**: OpenAI `gpt-realtime` over a WebSocket held by the phone.
+  - **GPT-5.5**: phone-side local speech detection, transcription, Responses API using `gpt-5.5` with reasoning effort `low`, then TTS back to the watch.
+- Hands-free conversation is the default. Push-to-talk remains available through the watch settings.
+- Workout runtime support is enabled for keeping the watch process alive longer, but it does not keep the physical display bright forever. The watch must be worn/unlocked for sane behavior.
+- Haptics were removed from the watch voice session because they appeared to make the experience less stable.
+- The phone companion now stores chat transcripts as separate sessions with generated titles. Transcripts can be opened, copied, shared, swipe-deleted individually, or cleared all at once.
+- `icon.png` at the repo root is the source image for both app icons:
+  - watch target uses `AppIcon`
+  - phone target uses `PhoneAppIcon`
+
+## Why Two Targets
+
+The watchOS networking stack does not reliably allow third-party apps to open arbitrary outbound TLS WebSockets. This was tested with `URLSessionWebSocketTask`, `URLSession+waitsForConnectivity`, and `NWConnection+NWProtocolWebSocket`. Failures included `-1009`, `cancelled`, and `ENETDOWN [POSIX 50]`, even when HTTPS data tasks worked.
+
+The iPhone companion sidesteps that by holding the OpenAI connection and relaying audio/control messages to the watch over Bluetooth via `WCSession`.
 
 ## UX
 
-Push-to-talk. The watch shows a big orb. **Hold the orb to talk, release to send**. Quick tap from `disconnected` starts the session; quick tap from `speaking` interrupts the AI and immediately starts a new turn. We deliberately do not use OpenAI's server VAD — repeated lockups (mic feedback re-triggering VAD, "stuck listening forever") made it unreliable.
+The watch shows a large orb.
 
-Phase state machine on the watch:
-```
-disconnected → connecting → connected ⇄ listening
-                              ↑           ↓
-                              speaking ←──/
+- From disconnected: tap the orb to start a session.
+- In hands-free mode: speak naturally after startup.
+- In push-to-talk mode: hold the orb to talk, release to commit.
+- Settings on the watch choose the engine: Realtime or GPT-5. The label may still say GPT-5 in UI, but the configured model is currently `gpt-5.5`.
+
+Watch phase machine:
+
+```text
+disconnected -> connecting -> connected <-> listening
+                              ^             |
+                              |             v
+                              speaking <----/
 ```
 
 ## Layout
 
-- `WatchGPT/` — watchOS target (Swift 5, deploymentTarget 11.0)
-  - `WatchGPTApp.swift` — entry point; `AppConfiguration.registerDefaults()`
-  - `Views/`
-    - `ContentView.swift` — orb + transcript + stop button. Orb uses `onLongPressGesture(minimumDuration: 0, onPressingChanged:)` (DragGesture's `onEnded` was unreliable).
-    - `SettingsView.swift`, `RealtimeTranscriptBubble.swift`
-  - `Services/`
-    - `RealtimeVoiceSession` — `WCSession` client + phase machine. Sends `start`/`stop`/`commit`/audio to phone, receives audio + events back. Watchdog timer + audio-engine restart logic live here.
-    - `RealtimeAudioIO` — `AVAudioEngine` mic capture (24 kHz PCM16) + `AVAudioPlayerNode` playback. Manual Float32→Int16 conversion (AVAudioConverter produced all zeros on watchOS); `.measurement` mode with `inputGain=4.0`, `outputGain=2.0`. `isEngineRunning` and `restartIfNeeded()` for recovery.
-  - `Models/RealtimeTranscriptLine.swift`
-  - `Support/AppConfiguration.swift` — minimal: `speakReplies` toggle, `maxStoredMessages`. **No API key on the watch.**
-  - `Config/WatchGPT.xcconfig` — committed; intentionally empty.
-  - `Info.plist` — mic usage, `WKApplication`, `WKCompanionAppBundleIdentifier = dev.watchgpt.app`, `WKBackgroundModes: audio`.
-- `WatchGPTPhone/` — iOS target (Swift 5, deploymentTarget 17.0)
-  - `WatchGPTPhoneApp.swift` — entry; activates `PhoneRealtimeBridge` on launch.
-  - `Views/` — `PhoneContentView` (status + counters), `PhoneSettingsView` (API key, voice picker).
-  - `Services/PhoneRealtimeBridge.swift` — `WCSessionDelegate` ↔ OpenAI `URLSessionWebSocketTask`. Auto-reconnect with exponential backoff, 10s ping watchdog, keep-alive AVAudioSession.
-  - `Support/PhoneConfiguration.swift` — API key plumbing (UserDefaults → bundle default), realtime constants (model `gpt-realtime`, default voice `marin`, instruction string), endpoint URL builder, voice picker list.
-  - `Config/WatchGPTPhone.xcconfig` — committed; falls through to `LocalSecrets.xcconfig` (gitignored).
-  - `Info.plist` — `WATCHGPT_OPENAI_API_KEY` from xcconfig, `UIBackgroundModes: audio`.
-- `Shared/RealtimeMessages.swift` — message envelope, compiled into both targets.
-- `scripts/configure-phone.js` — reads `./.env` or `OPENAI_API_KEY` env, writes `WatchGPTPhone/Config/LocalSecrets.xcconfig`.
-- `scripts/configure-watch.js` — historical, watch xcconfig is empty by design. Don't use it.
-- `project.yml` — XcodeGen spec. `WatchGPTPhone` embeds `WatchGPT`. Run `xcodegen generate` after structural changes.
+- `WatchGPT/` - watchOS target, Swift 5, deployment target 11.0
+  - `WatchGPTApp.swift` - app entry, registers defaults.
+  - `Views/ContentView.swift` - orb UI, transcript view, stop/settings controls.
+  - `Views/SettingsView.swift` - engine picker, hands-free toggle, audio replies, workout runtime toggle.
+  - `Services/RealtimeVoiceSession.swift` - watch-side phase machine and `WCSession` client. Starts/stops runtime keeper, sends audio/control messages to phone, receives phone audio/events.
+  - `Services/RealtimeAudioIO.swift` - watch mic capture and playback. 24 kHz PCM16 mono. Uses `.voiceChat` and enables voice processing when available.
+  - `Support/AppConfiguration.swift` - watch settings keys/defaults. No API key on watch.
+  - `Info.plist` - mic usage, HealthKit usage, `WKBackgroundModes` for audio and workout processing.
+  - `WatchGPT.entitlements` - HealthKit entitlement.
+  - `Assets.xcassets/AppIcon.appiconset` - watch icon renditions generated from root `icon.png`.
+- `WatchGPTPhone/` - iOS companion target, Swift 5, deployment target 17.0
+  - `WatchGPTPhoneApp.swift` - app entry, activates `PhoneRealtimeBridge`.
+  - `Views/PhoneContentView.swift` - status screen plus transcript session list/detail UI.
+  - `Views/PhoneSettingsView.swift` - API key and realtime voice picker.
+  - `Services/PhoneRealtimeBridge.swift` - phone-side bridge for both engines, transcript persistence, OpenAI calls, keep-alive handling.
+  - `Support/PhoneConfiguration.swift` - model names, API key plumbing, voice config, endpoint builders.
+  - `Config/WatchGPTPhone.xcconfig` - committed; includes gitignored `LocalSecrets.xcconfig`.
+- `Shared/RealtimeMessages.swift` - compact message envelope shared by both targets.
+- `WatchGPT/Assets.xcassets/PhoneAppIcon.appiconset` - phone icon renditions generated from root `icon.png`.
+- `project.yml` - XcodeGen spec. Regenerate after structural target/file changes.
 
-## Architecture
+## Engine Details
 
+### Realtime Engine
+
+```text
+Watch mic PCM16 -> WCSession data -> iPhone -> OpenAI Realtime WebSocket
+OpenAI PCM16 deltas -> iPhone -> WCSession data -> Watch playback
 ```
-[Watch app] ──WC sendMessage / sendMessageData (Bluetooth)── [iPhone app] ──WSS── [OpenAI Realtime]
+
+- Model: `gpt-realtime`.
+- Endpoint: `wss://api.openai.com/v1/realtime?model=gpt-realtime`.
+- Input/output audio: PCM16, 24 kHz mono.
+- Default realtime voice: `marin`.
+- Realtime VAD:
+  - hands-free uses semantic VAD with `create_response: true` and `interrupt_response: true`
+  - push-to-talk sets `turn_detection: null` and sends `input_audio_buffer.commit` + `response.create` manually
+- Audio deltas are buffered to roughly 9,600 bytes before sending back to the watch for lower latency.
+
+### GPT-5.5 Engine
+
+This is not realtime. It is a sequential pipeline on the phone:
+
+```text
+Watch mic PCM16 -> WCSession data -> phone local VAD
+-> audio transcription -> Responses API -> TTS PCM
+-> chunked WCSession data -> Watch playback
 ```
 
-- Watch captures mic at 24 kHz PCM16, sends each chunk via `WCSession.sendMessageData` (raw bytes, dedicated channel).
-- iPhone base64-encodes audio, forwards as `input_audio_buffer.append`.
-- On orb release, watch sends `.commit` (`sendMessage`); phone emits `input_audio_buffer.commit` + `response.create`.
-- iPhone receives OpenAI events. Audio deltas → `sendMessageData(audio)` back to watch (buffered to ~19,200 bytes for smoothness). Transcript / state events → `sendMessage([type:…])`.
-- We do **not** use OpenAI's `turn_detection` — set to `NSNull()`. Half-duplex by design.
+- Text model: `gpt-5.5`.
+- Reasoning: `{ "effort": "low" }`.
+- Transcription model: `gpt-4o-mini-transcribe`.
+- TTS model: `gpt-4o-mini-tts`.
+- TTS voice reuses the selected realtime voice when valid for TTS; otherwise falls back to `coral`.
+- GPT mode is intentionally one turn at a time:
+  - listen
+  - transcribe
+  - think
+  - synthesize
+  - speak
+  - return to listening
+- Recent stability changes:
+  - added a short speech-start debounce so one loud frame does not trigger a fake turn
+  - drops too-short noise bursts
+  - chunks TTS audio before sending to the watch
+  - paces chunks slightly to avoid blasting one large WatchConnectivity payload
 
-## Resilience layers (added because the underlying transports drop)
+## Transcript History
 
-### Watch side (`RealtimeVoiceSession`)
+The phone companion persists transcript sessions in `UserDefaults`.
 
-- **Watchdog** runs every 2s while connected:
-  - `.speaking` for >6s past `playbackEndsAt` → force `.connected`
-  - `.connecting` for >12s → fail with error
-  - `.listening` for >60s → force `.connected`
-- **Response timeout**: on commit, stamp `awaitingResponseSince`. Cleared on any sign of life from OpenAI. >12s with no signal → "No reply from iPhone…" error.
-- **`WKExtendedRuntimeSession` auto-restart** on expiry. Without this the watch dims and the audio engine dies.
-- **`beginTurn` is robust**: auto-recovers from `.speaking`/`.connecting`, force-restarts the audio session, then enters `.listening`. Lets you interrupt the AI mid-reply with one press.
-- **Late-audio guard**: `handlePhoneAudio` drops chunks if `phase == .listening` (otherwise interrupts bounce back to `.speaking`).
-- **`isReachable` is advisory, not fatal.** WC reachability flickers spuriously even when both apps are healthy. We log changes but never tear down on it.
+- Data models live in `PhoneRealtimeBridge.swift`:
+  - `PhoneTranscriptSession`
+  - `PhoneTranscriptLine`
+- Storage key: `WatchGPTPhone.transcriptSessions.v2`.
+- Legacy migration reads `WatchGPTPhone.transcriptLines.v1` if present.
+- Each started voice session creates a new transcript session titled either `Realtime chat` or `GPT-5.5 chat`.
+- On the first user utterance, the title is replaced with a short title derived from the utterance.
+- `PhoneContentView` shows session history, detail view, copy/share controls, individual swipe delete, and clear-all.
 
-### iPhone side (`PhoneRealtimeBridge`)
+## Runtime / Sleep Notes
 
-- **Auto-reconnect with exponential backoff**: `handleSocketLost(reason:)` is the single recovery path used by the receive loop, the ping task, and `commitUserTurn`. Backoff 1s → 2s → 4s → 8s, max 4 attempts. `reconnectAttempts` reset on `session.created`. During reconnect, counters are preserved.
-- **Ping watchdog**: 10s `sendPing` against the WS. Detects half-open TCP sockets that `URLSessionWebSocketTask` won't notice on its own.
-- **Keep-alive**: `UIBackgroundModes: audio` + an active `AVAudioSession` (`.playback`, `mixWithOthers`) + `isIdleTimerDisabled = true` while a session is live. The audio entitlement alone does nothing — you must actually hold an audio session for iOS to keep the app foreground-equivalent.
-- **Voice change mid-session**: `UserDefaults.didChangeNotification` observer triggers a fresh `session.update` if the picker value changed and we're connected (`lastSentVoice` tracks the active value).
-- **`URLSession` timeouts tuned for streaming**: `timeoutIntervalForRequest = 90`, `timeoutIntervalForResource = 86400`. The default 30s killed long-lived WS frames during silence.
+`WatchRuntimeKeeper` in `RealtimeVoiceSession.swift` starts:
 
-## Invariants
+- `WKExtendedRuntimeSession`
+- optional `HKWorkoutSession` with `.mindAndBody`
 
-- **API key lives only on the iPhone.** Watch has no key plumbing.
-- **Both apps must be running for a session.** `WCSession.sendMessage`/`sendMessageData` are foreground-to-foreground. The keep-alive on iPhone is what makes long sessions practical.
-- **Message envelope**: `RealtimeMessage.encode(_:payload:)` → `[String: Any]` keyed by `RealtimeMessageKey.type` (`"t"`) and `RealtimeMessageKey.text` (`"x"`). Audio is raw `Data` via `sendMessageData` — never wrapped.
-- **Audio format**: 24 kHz PCM16 mono both directions.
+This is the best currently implemented path for keeping watch execution alive. It is not a magic screen-lock override:
+
+- wrist-down can still dim the display
+- off-wrist/unlocked behavior is bad and can trigger PIN prompts
+- entitlement or background mode changes may require deleting/reinstalling the watch app
+- the watch app should be tested while worn and unlocked
+
+## Important Invariants
+
+- API key lives only on the iPhone.
+- Watch and iPhone apps both need to be running/reachable for live sessions.
+- `WCSession.sendMessageData` is used for raw audio bytes.
+- `WCSession.sendMessage` is used for compact control/text messages.
+- `RealtimeMessageKey.type` is `"t"` and text is `"x"`.
+- Audio format is 24 kHz PCM16 mono in both directions.
+- Avoid adding haptics back into the watch voice session unless there is a very specific reason and on-device evidence that it does not destabilize the session.
+- The assistant prompt explicitly says it has no visual/camera/screen/location/sensor access. This was added after it said things like "I can see you."
 
 ## Commands
 
 ```sh
-# bake the API key into the iPhone debug build (reads ./.env or OPENAI_API_KEY env)
+# Configure the iPhone build with an API key from ./.env or OPENAI_API_KEY.
 npm run configure:phone
 
-# regenerate the Xcode project after adding/removing .swift files or editing project.yml
+# Regenerate Xcode project after adding/removing files or changing project.yml.
 xcodegen generate
 
-# typecheck watch target
+# Typecheck core watch files.
 xcrun --sdk watchos swiftc -typecheck \
   Shared/RealtimeMessages.swift \
-  WatchGPT/WatchGPTApp.swift \
-  WatchGPT/Support/AppConfiguration.swift \
   WatchGPT/Models/RealtimeTranscriptLine.swift \
+  WatchGPT/Support/AppConfiguration.swift \
   WatchGPT/Services/RealtimeAudioIO.swift \
   WatchGPT/Services/RealtimeVoiceSession.swift \
-  WatchGPT/Views/ContentView.swift \
-  WatchGPT/Views/RealtimeTranscriptBubble.swift \
-  WatchGPT/Views/SettingsView.swift \
-  -target arm64-apple-watchos11.0
+  -target arm64-apple-watchos11.0 \
+  -module-cache-path /tmp/WatchGPTSwiftModuleCache
 
-# typecheck iPhone target
+# Typecheck core phone bridge.
 xcrun --sdk iphoneos swiftc -typecheck \
   Shared/RealtimeMessages.swift \
-  WatchGPTPhone/WatchGPTPhoneApp.swift \
   WatchGPTPhone/Support/PhoneConfiguration.swift \
-  WatchGPTPhone/Views/PhoneContentView.swift \
-  WatchGPTPhone/Views/PhoneSettingsView.swift \
   WatchGPTPhone/Services/PhoneRealtimeBridge.swift \
-  -target arm64-apple-ios17.0
+  -target arm64-apple-ios17.0 \
+  -module-cache-path /tmp/WatchGPTSwiftModuleCache
+
+# Typecheck phone UI without Preview macros.
+mkdir -p /tmp/watchgpt-typecheck-phone
+awk '/#Preview/ {exit} {print}' WatchGPTPhone/Views/PhoneContentView.swift > /tmp/watchgpt-typecheck-phone/PhoneContentView.swift
+awk '/#Preview/ {exit} {print}' WatchGPTPhone/Views/PhoneSettingsView.swift > /tmp/watchgpt-typecheck-phone/PhoneSettingsView.swift
+xcrun --sdk iphoneos swiftc -typecheck \
+  Shared/RealtimeMessages.swift \
+  WatchGPTPhone/Support/PhoneConfiguration.swift \
+  WatchGPTPhone/Services/PhoneRealtimeBridge.swift \
+  /tmp/watchgpt-typecheck-phone/PhoneContentView.swift \
+  /tmp/watchgpt-typecheck-phone/PhoneSettingsView.swift \
+  WatchGPTPhone/WatchGPTPhoneApp.swift \
+  -target arm64-apple-ios17.0 \
+  -module-cache-path /tmp/WatchGPTSwiftModuleCache
+
+# Quick asset catalog checks.
+xcrun actool WatchGPT/Assets.xcassets \
+  --compile /tmp/WatchGPTAssetCheck-iOS \
+  --output-format human-readable-text \
+  --warnings --notices \
+  --app-icon PhoneAppIcon \
+  --accent-color AccentColor \
+  --platform iphoneos \
+  --target-device iphone \
+  --minimum-deployment-target 17.0
+
+xcrun actool WatchGPT/Assets.xcassets \
+  --compile /tmp/WatchGPTAssetCheck-watch \
+  --output-format human-readable-text \
+  --warnings --notices \
+  --app-icon AppIcon \
+  --accent-color AccentColor \
+  --platform watchos \
+  --target-device watch \
+  --minimum-deployment-target 11.0
 ```
 
-CI workflow at `.github/workflows/ci.yml` was removed because the local `gh` token lacks `workflow` scope. Re-add it via:
+Note: full `xcodebuild` may fail in this local environment because CoreSimulator/watch simulator runtimes are broken or unavailable. The Swift typechecks above have been the more reliable sanity checks.
 
-```sh
-gh auth refresh -s workflow
-# then restore the file (it ran both typechecks on macos-latest) and push
-```
-
-## Conventions / gotchas
+## Gotchas
 
 - `LocalSecrets.xcconfig`, `.env`, and `.claude/` are gitignored. Never commit secrets.
-- The watch's xcconfig is intentionally empty — if you find yourself adding the API key there, you've crossed a trust boundary.
-- After adding/removing `.swift` files, run `xcodegen generate`. The pbxproj has explicit refs.
-- Both apps need `WCSession.activate()` at launch. We do this in their `App.init` paths via the bridge / session.
-- `WCSession.sendMessage` errors don't surface to the recipient. Use `errorHandler:` on the sender for visibility.
-- `sendMessageData` is for binary; `sendMessage([String: Any])` is for control + text. Don't try to wrap audio in a dict — the dedicated channel exists for a reason.
-- `RealtimeVoiceSession` and `PhoneRealtimeBridge` handle both old and new OpenAI realtime event names (`response.audio.delta` ↔ `response.output_audio.delta`). Don't drop one set without testing.
-- The model is `gpt-realtime` (not `gpt-realtime-2` — that one isn't available on most accounts).
-- Voice picker has 10 voices; OpenAI recommends `marin` or `cedar` for `gpt-realtime`.
-- Watch logs lifecycle to console (runtime session expiry, reachability flips, `beginTurn` ignores). Plug the watch in and use Console.app filtered by "WatchGPT" when debugging.
-- This is a personal sideloading project. The iPhone build embeds your live API key — never distribute the .ipa.
+- `project.yml` and `WatchGPT.xcodeproj/project.pbxproj` are both currently updated. If you regenerate with XcodeGen, re-check target resource phases and app icon names:
+  - Watch target: `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`
+  - Phone target: `ASSETCATALOG_COMPILER_APPICON_NAME = PhoneAppIcon`
+- The phone target needs the shared `WatchGPT/Assets.xcassets` resource for `PhoneAppIcon`.
+- `sendMessageData` can be fragile with large payloads. GPT-5.5 TTS audio is chunked via `sendAudioToWatchInChunks`.
+- `WCSession.isReachable` flickers. Watch logs reachability changes but should not tear down sessions just because it flips.
+- `RealtimeVoiceSession` and `PhoneRealtimeBridge` handle old and new OpenAI realtime event names. Keep both forms unless tested.
+- If the watch app will not launch after entitlement/background-mode changes, delete/reinstall the watch app and rebuild from the phone target.
 
-## Known weak points / future work
+## Known Weak Points / Next Debugging Targets
 
-- **Interrupting mid-reply doesn't tell OpenAI to stop.** Pressing the orb during `.speaking` recovers the watch and the late-audio guard discards stragglers, but OpenAI keeps generating server-side until it wraps. A `.cancel` message + phone-side `response.cancel` would clean this up.
-- **Reconnect during an in-flight turn** loses the user's audio buffer — they have to talk again. The watch could detect a `.ready` while in `.listening` and surface "Disconnected — try again", but currently it just resets phase.
-- **No iPhone background pickup**: if the iPhone app is force-quit (not just backgrounded), the first watch `start` will fail with reachability. The keep-alive prevents normal background suspension, but not a manual swipe-up kill.
+- GPT-5.5 mode has been twitchy on-device. The current mitigation is local VAD debounce plus short-burst dropping, but it still needs real watch testing.
+- GPT-5.5 "never speaks back" was likely caused by sending synthesized speech as one huge `sendMessageData` payload. It is now chunked/paced, but verify on device.
+- Realtime is still the smoother path. GPT-5.5 mode is turn-based and will never feel as immediate as `gpt-realtime`.
+- The watch screen can still dim/off. Workout runtime helps process lifetime, not display brightness.
+- If OpenAI rejects `gpt-5.5`, the user may not have API access to that model. The phone bridge should surface the API error.
+- Background pickup is limited. If the iPhone app is force-quit, the watch cannot revive it.
+- Reconnect during an in-flight turn can lose buffered audio. The UX should eventually surface "connection dropped, try again" more explicitly.

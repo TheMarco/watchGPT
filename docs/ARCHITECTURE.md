@@ -15,23 +15,25 @@ Captures and plays audio. Holds no networking, no API key.
 - Receives audio chunks back via `sendMessageData`, plays through `AVAudioPlayerNode`.
 - Receives `[String: Any]` control messages (`ready`, `speechStarted`, `userTranscript`, `assistantTranscriptDelta`, `assistantTranscriptFinal`, `error`, etc.) via `sendMessage`.
 - Renders the phase state machine and transcript.
+- Keeps active sessions alive with `WKExtendedRuntimeSession`, an active audio engine, and a lightweight HealthKit `HKWorkoutSession` started only after the user begins a voice session. The display can still dim, but workout session mode is the supported way to keep watch execution alive wrist-down.
 
 ## iPhone companion (`WatchGPTPhone/`)
 
 Holds the OpenAI Realtime WebSocket. Holds the API key.
 
 - API key from UserDefaults (Settings screen) → bundle default (`WATCHGPT_OPENAI_API_KEY` from xcconfig).
-- On `start` from watch, opens `wss://api.openai.com/v1/realtime?model=gpt-realtime-2` with `Authorization: Bearer <key>` and `OpenAI-Beta: realtime=v1`.
-- On `session.created`, sends a `session.update` configuring 24 kHz PCM16 in/out, voice `marin`, semantic VAD with `medium` eagerness, `gpt-4o-mini-transcribe` for input transcription, `reasoning.effort: low`, and `create_response: true` + `interrupt_response: true` so OpenAI handles response triggering and barge-in.
+- On `start` from watch, opens `wss://api.openai.com/v1/realtime?model=gpt-realtime` with `Authorization: Bearer <key>` and `OpenAI-Beta: realtime=v1`.
+- On `session.created`, sends a `session.update` configuring 24 kHz PCM16 in/out, voice `marin`, `gpt-4o-mini-transcribe` for input transcription, and either semantic VAD with `low` eagerness plus `create_response`/`interrupt_response`, or manual turn detection for push-to-talk fallback.
 - Forwards watch audio to OpenAI as `input_audio_buffer.append` (base64 PCM).
 - Forwards OpenAI audio deltas to watch as raw `Data` over `sendMessageData`.
 - Forwards transcripts and state events to watch as `[String: Any]` messages.
+- GPT-5 engine mode skips the Realtime socket and uses a chained voice pipeline: local peak/silence detection on the phone, Audio Transcriptions, Responses API with `gpt-5`, then Audio Speech with PCM output back to the watch.
 
 ## Shared (`Shared/RealtimeMessages.swift`)
 
 Compiled into both targets. Defines:
 - `RealtimeMessageType` — typed enum of message kinds.
-- `RealtimeMessageKey` — short string keys (`"t"` for type, `"x"` for text).
+- `RealtimeMessageKey` — short string keys (`"t"` for type, `"x"` for text, `"a"` for automatic turn detection).
 - `RealtimeMessage.encode(_:payload:)` / `RealtimeMessage.type(of:)` helpers.
 
 Audio data is sent through the dedicated `sendMessageData` channel — not wrapped in a dict.
@@ -54,8 +56,7 @@ watchOS does not allow third-party apps to open arbitrary outbound TLS WebSocket
 
 ## Voice quality target
 
-- semantic VAD decides when the user is done speaking (server-side).
+- semantic VAD decides when the user is done speaking in hands-free mode (server-side).
 - assistant audio streams back as 24 kHz PCM and starts playing as soon as the first delta arrives.
 - speaking interrupts the assistant; `interrupt_response: true` lets OpenAI cancel the response.
-- `marin` is the default voice (OpenAI recommends `marin` and `cedar` for Realtime 2).
-- `reasoning.effort: low` per the Realtime 2 prompting guide.
+- `marin` is the default voice.

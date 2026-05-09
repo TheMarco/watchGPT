@@ -17,10 +17,26 @@ enum RealtimeMessageType: String {
     case watchAudioLevel
 }
 
+enum VoiceEngine: String, CaseIterable {
+    case realtime
+    case gpt5
+
+    var displayName: String {
+        switch self {
+        case .realtime:
+            return "Realtime"
+        case .gpt5:
+            return "GPT-5.5"
+        }
+    }
+}
+
 enum RealtimeMessageKey {
     static let type = "t"
     static let payload = "p"
     static let text = "x"
+    static let automaticTurnDetection = "a"
+    static let voiceEngine = "e"
 }
 
 enum RealtimeMessage {

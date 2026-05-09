@@ -189,11 +189,11 @@ struct ContentView: View {
         case .connecting:
             return "Connecting…"
         case .connected:
-            return "Hold the orb to talk"
+            return session.isAutomaticConversationEnabled ? "Speak anytime" : "Hold the orb to talk"
         case .listening:
-            return "Release to send"
+            return session.isAutomaticConversationEnabled ? "Listening hands-free" : "Release to send"
         case .speaking:
-            return "Replying…"
+            return session.isAutomaticConversationEnabled ? "Speak to interrupt" : "Replying…"
         }
     }
 
@@ -270,11 +270,11 @@ struct ContentView: View {
         case .connecting:
             return "Opening session"
         case .connected:
-            return "Hold the orb to talk"
+            return session.isAutomaticConversationEnabled ? "Speak naturally" : "Hold the orb to talk"
         case .listening:
-            return "Recording your voice"
+            return session.isAutomaticConversationEnabled ? "Listening for your turn" : "Recording your voice"
         case .speaking:
-            return "Playing the reply"
+            return session.isAutomaticConversationEnabled ? "You can interrupt" : "Playing the reply"
         }
     }
 }
@@ -353,9 +353,9 @@ private struct VoiceOrb: View {
         case .connecting:
             return "Connecting"
         case .connected:
-            return "Hold to talk"
+            return "Voice session ready"
         case .listening:
-            return "Release to send"
+            return "Listening"
         case .speaking:
             return "Replying"
         }

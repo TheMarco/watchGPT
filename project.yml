@@ -23,6 +23,7 @@ targets:
         PRODUCT_NAME: WatchGPT
         PRODUCT_BUNDLE_IDENTIFIER: dev.watchgpt.app.watchkitapp
         INFOPLIST_FILE: WatchGPT/Info.plist
+        CODE_SIGN_ENTITLEMENTS: WatchGPT/WatchGPT.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
@@ -40,6 +41,7 @@ targets:
     sources:
       - path: WatchGPTPhone
       - path: Shared
+      - path: WatchGPT/Assets.xcassets
     dependencies:
       - target: WatchGPT
         embed: true
@@ -48,6 +50,8 @@ targets:
         PRODUCT_NAME: WatchGPTPhone
         PRODUCT_BUNDLE_IDENTIFIER: dev.watchgpt.app
         INFOPLIST_FILE: WatchGPTPhone/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: PhoneAppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: 0.1.0

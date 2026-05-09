@@ -5,6 +5,7 @@ struct SettingsView: View {
     @AppStorage(AppConfiguration.voiceEngineKey) private var voiceEngine = VoiceEngine.realtime.rawValue
     @AppStorage(AppConfiguration.workoutRuntimeKey) private var workoutRuntime = true
     @AppStorage(AppConfiguration.speakRepliesKey) private var speakReplies = true
+    @AppStorage(AppConfiguration.micSensitivityKey) private var micSensitivity = MicSensitivity.default.rawValue
 
     let onReset: () -> Void
 
@@ -34,6 +35,18 @@ struct SettingsView: View {
                 Text("Voice")
             } footer: {
                 Text(currentEngine.modelDescription)
+            }
+
+            Section {
+                Picker("Mic sensitivity", selection: $micSensitivity) {
+                    ForEach(MicSensitivity.allCases) { option in
+                        Text(option.displayName).tag(option.rawValue)
+                    }
+                }
+            } header: {
+                Text("Microphone")
+            } footer: {
+                Text("Lower sensitivity if background noise (TV, kids, traffic) keeps interfering. Applies on the next session start.")
             }
 
             Section {

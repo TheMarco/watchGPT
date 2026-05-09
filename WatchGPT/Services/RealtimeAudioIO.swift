@@ -37,8 +37,12 @@ final class RealtimeAudioIO {
     private var audioOutBuffer = Data()
     private let audioOutLock = NSLock()
     private let audioOutFlushBytes = 9_600
-    private let inputGain: Float = 4.0
+    private var inputGain: Float = 4.0
     private let outputGain: Float = 2.0
+
+    func setInputGain(_ value: Float) {
+        inputGain = value
+    }
     private var interruptionObserver: NSObjectProtocol?
 
     // Wires the graph and sets the session category without activating it,

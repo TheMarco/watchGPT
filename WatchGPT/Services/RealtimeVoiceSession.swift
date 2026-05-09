@@ -132,6 +132,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
                 default: true
             )
         )
+        audioIO.setInputGain(AppConfiguration.micSensitivity.inputGain)
         lastActivityAt = Date()
         startWatchdog()
         sendStartToPhone()
@@ -142,6 +143,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
 
     func prewarmAudio() {
+        audioIO.setInputGain(AppConfiguration.micSensitivity.inputGain)
         audioIO.prepare()
     }
 

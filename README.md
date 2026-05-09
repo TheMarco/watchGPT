@@ -4,6 +4,8 @@ Realtime ChatGPT voice for Apple Watch. Tap the orb, talk, hear the answer strea
 
 This is a **personal sideloading project**. There is no App Store build and there will not be one. You bring your own OpenAI API key, you build it yourself, you run it on your own watch.
 
+You may wonder: "Why not?". There are several reasons: First of all, "bring your own API keys" is not end-user friendly. The alternative is me charging people for usage and I really don't want to deal with that kind of headache. Secondly, this app probably treads on Siri which Apple may reject it for. It also uses workout keep-alive to keep the screen on. Since it's not actually a workout app I'm anticipating Apple would give me a hard time about that as well.
+
 ## How it works
 
 ```text

@@ -172,9 +172,53 @@ enum AssistantLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+enum RealtimeVADEagerness: String, CaseIterable, Identifiable {
+    case low
+    case medium
+    case high
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .low: return "Patient"
+        case .medium: return "Balanced"
+        case .high: return "Quick"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .low: return "Waits longer before replying."
+        case .medium: return "Good default for natural pauses."
+        case .high: return "Replies quickly after short pauses."
+        }
+    }
+}
+
+enum ReasoningEffort: String, CaseIterable, Identifiable {
+    case low
+    case medium
+    case high
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        }
+    }
+}
+
 enum PhoneConfiguration {
     static let openAIAPIKeyKey = "openAIAPIKey"
+    static let defaultVoiceEngineKey = "openAIDefaultVoiceEngine"
     static let realtimeVoiceKey = "openAIRealtimeVoice"
+    static let thinkVoiceKey = "openAIThinkVoice"
+    static let realtimeVADEagernessKey = "openAIRealtimeVADEagerness"
+    static let regularReasoningEffortKey = "openAIRegularReasoningEffort"
     static let assistantLanguageKey = "openAIAssistantLanguage"
     static let braveSearchAPIKeyKey = "braveSearchAPIKey"
 
@@ -192,6 +236,7 @@ enum PhoneConfiguration {
     ]
 
     static let defaultRealtimeVoice = "marin"
+    static let defaultThinkVoice = "coral"
     static let availableTTSVoices = [
         "alloy",
         "ash",
@@ -207,10 +252,8 @@ enum PhoneConfiguration {
     ]
     static let realtimeModel = "gpt-realtime"
     static let regularVoiceModel = "gpt-5.5"
-    static let regularReasoningEffort = "low"
     static let transcriptionModel = "gpt-4o-mini-transcribe"
     static let ttsModel = "gpt-4o-mini-tts"
-    static let realtimeEagerness = "low"
     static let realtimeInstructions =
         "You are WatchGPT, a fast, warm realtime voice assistant running on Apple Watch. Match the user's spoken language whenever you are confident which language it is. If there is any uncertainty — short utterances, unfamiliar accents, background noise, silent input — respond in English. Do not speak any language other than English unless you have clearly heard the user speak that language in this session. Never switch to a third language unprompted. You only receive microphone audio and text transcripts. You do not have camera, screen, location, sensor, or visual access, so never claim you can see the user, their room, their watch, or anything around them. If asked what you can perceive, say you can hear the user's voice only. Speak naturally, keep replies concise unless asked for depth, and avoid long lists unless they are genuinely useful."
 
@@ -247,6 +290,11 @@ enum PhoneConfiguration {
         !braveSearchAPIKey.isEmpty
     }
 
+    static var defaultVoiceEngine: VoiceEngine {
+        let raw = UserDefaults.standard.string(forKey: defaultVoiceEngineKey) ?? VoiceEngine.realtime.rawValue
+        return VoiceEngine(rawValue: raw) ?? .realtime
+    }
+
     static var realtimeVoice: String {
         let stored = UserDefaults.standard.string(forKey: realtimeVoiceKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -258,9 +306,29 @@ enum PhoneConfiguration {
         return stored
     }
 
+    static var thinkVoice: String {
+        let stored = UserDefaults.standard.string(forKey: thinkVoiceKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if stored.isEmpty || !availableTTSVoices.contains(stored) {
+            return defaultThinkVoice
+        }
+
+        return stored
+    }
+
     static var ttsVoice: String {
-        let voice = realtimeVoice
-        return availableTTSVoices.contains(voice) ? voice : "coral"
+        thinkVoice
+    }
+
+    static var realtimeEagerness: RealtimeVADEagerness {
+        let raw = UserDefaults.standard.string(forKey: realtimeVADEagernessKey) ?? RealtimeVADEagerness.low.rawValue
+        return RealtimeVADEagerness(rawValue: raw) ?? .low
+    }
+
+    static var regularReasoningEffort: ReasoningEffort {
+        let raw = UserDefaults.standard.string(forKey: regularReasoningEffortKey) ?? ReasoningEffort.low.rawValue
+        return ReasoningEffort(rawValue: raw) ?? .low
     }
 
     static var assistantLanguage: AssistantLanguage {
@@ -279,7 +347,11 @@ enum PhoneConfiguration {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             openAIAPIKeyKey: defaultOpenAIAPIKey,
+            defaultVoiceEngineKey: VoiceEngine.realtime.rawValue,
             realtimeVoiceKey: defaultRealtimeVoice,
+            thinkVoiceKey: defaultThinkVoice,
+            realtimeVADEagernessKey: RealtimeVADEagerness.low.rawValue,
+            regularReasoningEffortKey: ReasoningEffort.low.rawValue,
             assistantLanguageKey: AssistantLanguage.auto.rawValue
         ])
     }

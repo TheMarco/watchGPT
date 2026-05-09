@@ -51,6 +51,8 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     @Published private(set) var latestAssistantTranscript = ""
     @Published private(set) var transcriptLines: [RealtimeTranscriptLine] = []
     @Published private(set) var lastInputPeak: Float = 0
+    @Published private(set) var isCompanionReachable = false
+    @Published private(set) var connectionStatusText = "Checking iPhone"
     @Published var errorMessage: String?
 
     private let audioIO = RealtimeAudioIO()
@@ -75,6 +77,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         super.init()
         wcSession?.delegate = self
         wcSession?.activate()
+        refreshCompanionState()
     }
 
     var statusText: String {
@@ -117,6 +120,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             return
         }
 
+        refreshCompanionState()
         guard wcSession.isReachable else {
             errorMessage = RealtimeVoiceSessionError.companionUnreachable.localizedDescription
             return
@@ -131,8 +135,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             forKey: AppConfiguration.automaticConversationKey,
             default: true
         )
-        let engineValue = UserDefaults.standard.string(forKey: AppConfiguration.voiceEngineKey) ?? VoiceEngine.realtime.rawValue
-        voiceEngineForSession = VoiceEngine(rawValue: engineValue) ?? .realtime
+        voiceEngineForSession = .realtime
 
         runtimeKeeper.start(
             useWorkoutRuntime: UserDefaults.standard.bool(
@@ -187,8 +190,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     private func sendStartToPhone() {
         wcSession?.sendMessage(
             RealtimeMessage.encode(.start, payload: [
-                RealtimeMessageKey.automaticTurnDetection: automaticConversationEnabledForSession,
-                RealtimeMessageKey.voiceEngine: voiceEngineForSession.rawValue
+                RealtimeMessageKey.automaticTurnDetection: automaticConversationEnabledForSession
             ]),
             replyHandler: nil,
             errorHandler: { [weak self] error in
@@ -329,6 +331,12 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
 
         switch type {
         case .ready:
+            connectionStatusText = "iPhone ready"
+            if let engineRaw = message[RealtimeMessageKey.voiceEngine] as? String,
+               let engine = VoiceEngine(rawValue: engineRaw)
+            {
+                voiceEngineForSession = engine
+            }
             if hasStartedAudio, isAutomaticConversationEnabled {
                 phase = .listening
             } else {
@@ -386,6 +394,10 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
                 errorMessage = RealtimeVoiceSessionError.disconnected.localizedDescription
             }
             stop()
+        case .connectionStatus:
+            if let text = message[RealtimeMessageKey.text] as? String {
+                connectionStatusText = text
+            }
         default:
             break
         }
@@ -559,6 +571,19 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             transcriptLines = Array(transcriptLines.suffix(AppConfiguration.maxStoredMessages))
         }
     }
+
+    private func refreshCompanionState() {
+        guard let wcSession else {
+            isCompanionReachable = false
+            connectionStatusText = "iPhone companion unavailable"
+            return
+        }
+
+        isCompanionReachable = wcSession.isReachable
+        connectionStatusText = wcSession.isReachable
+            ? "iPhone ready"
+            : "Open WatchGPT on iPhone"
+    }
 }
 
 extension RealtimeVoiceSession: WCSessionDelegate {
@@ -566,6 +591,10 @@ extension RealtimeVoiceSession: WCSessionDelegate {
         if let error {
             Task { @MainActor [weak self] in
                 self?.errorMessage = "WatchConnectivity activation failed: \(error.localizedDescription)"
+            }
+        } else {
+            Task { @MainActor [weak self] in
+                self?.refreshCompanionState()
             }
         }
     }
@@ -586,6 +615,7 @@ extension RealtimeVoiceSession: WCSessionDelegate {
         let reachable = session.isReachable
         Task { @MainActor in
             print("[WatchGPT] reachability changed: \(reachable)")
+            self.refreshCompanionState()
         }
     }
 }

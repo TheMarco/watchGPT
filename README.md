@@ -21,7 +21,7 @@ The watch cannot reliably open arbitrary outbound WebSockets on its own. That's 
 ## Features
 
 - **Fast Mode** — OpenAI `gpt-realtime`, semantic VAD. Streaming speech-to-speech, conversational latency.
-- **Think Mode** — phone-side speech detection → transcription → Responses API (`gpt-5.5`, reasoning effort `low`) → TTS → playback. Multi-second latency per turn, but you get the smarter model.
+- **Think Mode** — phone-side speech detection → transcription → Responses API (`gpt-5.5`, configurable reasoning effort) → TTS → playback. Multi-second latency per turn, but you get the smarter model.
 - **Web search in both modes.** Think Mode uses OpenAI's built-in `web_search` server-side (no extra config). Fast Mode uses a function-tool callout to Brave Search if you provide a free Brave API key.
 - **Hands-free** by default. Push-to-talk available in watch settings.
 - **Voice barge-in toggle.** Off by default — half-duplex with tap-to-interrupt for quieter, less-echoey conversations. Flip it on if you want to interrupt the assistant by talking.
@@ -108,7 +108,6 @@ If everything is wired up correctly, the watch shows "Connecting…" briefly and
 
 On the **watch**, hit the gear icon:
 
-- **Mode** — Fast Mode (default, `gpt-realtime`) or Think Mode (`gpt-5.5`).
 - **Hands-free conversation** — On = talk naturally; off = push and hold the orb to speak.
 - **Audio replies** — Off mutes the speaker (text-only).
 - **Mic sensitivity** — High (quiet rooms), Standard (default), Low (noisy rooms — TV, kids).
@@ -118,7 +117,10 @@ On the **watch**, hit the gear icon:
 On the **iPhone**, hit the gear icon:
 
 - **OpenAI API key** — paste here to override the baked value.
-- **Voice** — pick from 10 voices. `marin` and `cedar` sound best with `gpt-realtime`.
+- **Default mode** — Fast Mode (`gpt-realtime`) or Think Mode (`gpt-5.5`). The watch starts whichever mode is selected here.
+- **Fast Mode voice** — pick from 10 realtime voices. `marin` and `cedar` sound best with `gpt-realtime`.
+- **Fast Mode turn-taking** — Patient / Balanced / Quick semantic VAD eagerness.
+- **Think Mode voice and reasoning** — choose TTS voice and Low / Medium / High reasoning effort.
 - **Assistant language** — Auto (matches what you speak, falls back to English when uncertain) or pin to one of 38 languages.
 - **Brave Search API key** — optional. Enables `web_search` in Fast Mode. Get one free at <https://api.search.brave.com>. Think Mode does not need this.
 

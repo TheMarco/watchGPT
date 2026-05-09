@@ -28,7 +28,6 @@ enum MicSensitivity: String, CaseIterable, Identifiable {
 
 enum AppConfiguration {
     static let automaticConversationKey = "automaticConversation"
-    static let voiceEngineKey = "voiceEngine"
     static let workoutRuntimeKey = "workoutRuntime"
     static let speakRepliesKey = "speakReplies"
     static let micSensitivityKey = "micSensitivity"
@@ -43,7 +42,6 @@ enum AppConfiguration {
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
             automaticConversationKey: true,
-            voiceEngineKey: VoiceEngine.realtime.rawValue,
             workoutRuntimeKey: true,
             speakRepliesKey: true,
             micSensitivityKey: MicSensitivity.default.rawValue,

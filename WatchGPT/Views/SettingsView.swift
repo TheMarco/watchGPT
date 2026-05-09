@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage(AppConfiguration.automaticConversationKey) private var automaticConversation = true
-    @AppStorage(AppConfiguration.voiceEngineKey) private var voiceEngine = VoiceEngine.realtime.rawValue
     @AppStorage(AppConfiguration.workoutRuntimeKey) private var workoutRuntime = true
     @AppStorage(AppConfiguration.speakRepliesKey) private var speakReplies = true
     @AppStorage(AppConfiguration.micSensitivityKey) private var micSensitivity = MicSensitivity.default.rawValue
@@ -10,19 +9,9 @@ struct SettingsView: View {
 
     let onReset: () -> Void
 
-    private var currentEngine: VoiceEngine {
-        VoiceEngine(rawValue: voiceEngine) ?? .realtime
-    }
-
     var body: some View {
         List {
             Section {
-                Picker("Mode", selection: $voiceEngine) {
-                    ForEach(VoiceEngine.allCases, id: \.rawValue) { engine in
-                        Text(engine.displayName).tag(engine.rawValue)
-                    }
-                }
-
                 Toggle(isOn: $automaticConversation) {
                     Label("Hands-free conversation", systemImage: "waveform.and.person.filled")
                 }
@@ -35,7 +24,7 @@ struct SettingsView: View {
             } header: {
                 Text("Voice")
             } footer: {
-                Text(currentEngine.modelDescription)
+                Text("Pick Fast Mode, Think Mode, language, voice, and model settings in WatchGPT on your iPhone.")
             }
 
             Section {

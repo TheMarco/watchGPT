@@ -15,9 +15,10 @@ enum RealtimeMessageType: String {
     case responseDone
     case error
     case watchAudioLevel
+    case connectionStatus
 }
 
-enum VoiceEngine: String, CaseIterable {
+enum VoiceEngine: String, CaseIterable, Codable {
     case realtime
     case gpt5
 

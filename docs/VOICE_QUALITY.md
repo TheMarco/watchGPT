@@ -25,7 +25,7 @@ Constants live in `WatchGPTPhone/Support/PhoneConfiguration.swift` and are sent 
 
 - `realtimeModel` (default `gpt-realtime` — the GA model; flip to `gpt-realtime-2` if your account has access and add `reasoning.effort` back to the session payload)
 - `realtimeVoice` (default `marin`)
-- `realtimeEagerness` (default `medium` — semantic VAD)
+- `realtimeEagerness` (default `low` / Patient — semantic VAD, configurable in iPhone Settings)
 - `realtimeInstructions` (system prompt)
 
 ## Known risks

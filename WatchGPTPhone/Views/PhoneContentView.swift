@@ -14,6 +14,10 @@ struct PhoneContentView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 14)
 
+                diagnosticsPanel
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+
                 transcriptsList
             }
             .background(Color(.systemGroupedBackground))
@@ -70,6 +74,8 @@ struct PhoneContentView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .frame(minHeight: 40)
             }
 
             if bridge.isActive {
@@ -139,7 +145,7 @@ struct PhoneContentView: View {
             return "Add your OpenAI API key in Settings to begin."
         }
         if bridge.isActive {
-            return "Streaming to OpenAI. Keep WatchGPT open on both devices."
+            return "Streaming to OpenAI. Keep both apps open."
         }
         return "Tap the orb on your Apple Watch to start a conversation."
     }
@@ -159,7 +165,7 @@ struct PhoneContentView: View {
             metricDivider
             metric("EVENTS", "\(bridge.eventsFromOpenAI)")
             metricDivider
-            metric("MIC", String(format: "%.2f", bridge.lastWatchInputPeak))
+            metric("SEARCH", "\(bridge.webSearchCount)")
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 4)
@@ -187,6 +193,54 @@ struct PhoneContentView: View {
     }
 
     // MARK: - Transcripts
+
+    private var diagnosticsPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Diagnostics", systemImage: "waveform.path")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(bridge.isActive ? "Live" : "Idle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(bridge.isActive ? .green : .secondary)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                diagnostic("Mode", PhoneConfiguration.defaultVoiceEngine.displayName)
+                diagnostic("Turn-taking", PhoneConfiguration.realtimeEagerness.displayName)
+                diagnostic("Last event", bridge.lastOpenAIEventType)
+                diagnostic("Reconnects", "\(bridge.reconnectCount)")
+                diagnostic("Mic peak", String(format: "%.2f", bridge.lastWatchInputPeak))
+                diagnostic("Watch chunks", "\(bridge.audioChunksFromWatch)")
+            }
+
+            if let reconnect = bridge.lastReconnectMessage {
+                Text(reconnect)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(12)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func diagnostic(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
 
     @ViewBuilder
     private var transcriptsList: some View {
@@ -295,7 +349,7 @@ struct PhoneContentView: View {
     }
 
     private func sessionPreview(_ session: PhoneTranscriptSession) -> String {
-        session.lines.first?.text ?? "No messages yet"
+        session.summary ?? session.lines.first?.text ?? "No messages yet"
     }
 
 }
@@ -313,7 +367,9 @@ struct PhoneTranscriptDetailView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 6) {
+            LazyVStack(spacing: 10) {
+                transcriptHeader
+
                 if currentSession.lines.isEmpty {
                     emptyDetailState
                         .padding(.top, 80)
@@ -417,12 +473,76 @@ struct PhoneTranscriptDetailView: View {
         .padding(.horizontal, 24)
     }
 
+    private var transcriptHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let summary = currentSession.summary {
+                Text(summary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                usageTile("Mode", currentSession.engine.displayName)
+                usageTile("Duration", formattedDuration(currentSession.usage.durationSeconds))
+                usageTile("Events", "\(currentSession.usage.eventsFromOpenAI)")
+                usageTile("Searches", "\(currentSession.usage.webSearchCount)")
+                usageTile("Reconnects", "\(currentSession.usage.reconnectCount)")
+                usageTile("Approx mic", formattedDuration(currentSession.usage.audioChunksFromWatch / 5))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func usageTile(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func formattedDuration(_ seconds: Int) -> String {
+        guard seconds > 0 else { return "Live" }
+        let minutes = seconds / 60
+        let remaining = seconds % 60
+        if minutes == 0 {
+            return "\(remaining)s"
+        }
+        return "\(minutes)m \(remaining)s"
+    }
+
     private var transcriptText: String {
-        currentSession.lines.map { line in
+        let header = [
+            currentSession.title,
+            currentSession.summary,
+            "Mode: \(currentSession.engine.displayName)",
+            "Duration: \(formattedDuration(currentSession.usage.durationSeconds))",
+            "Approx mic audio: \(formattedDuration(currentSession.usage.audioChunksFromWatch / 5))",
+            "Searches: \(currentSession.usage.webSearchCount)",
+            "Reconnects: \(currentSession.usage.reconnectCount)"
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n")
+
+        let body = currentSession.lines.map { line in
             let speaker = line.speaker == .user ? "You" : "WatchGPT"
             return "\(speaker): \(line.text)"
         }
         .joined(separator: "\n\n")
+
+        return body.isEmpty ? header : "\(header)\n\n\(body)"
     }
 
     private func transcriptBubble(_ line: PhoneTranscriptLine, isFirstOfSpeaker: Bool) -> some View {

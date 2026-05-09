@@ -110,17 +110,66 @@ struct PhoneTranscriptLine: Identifiable, Codable, Equatable {
     }
 }
 
+struct PhoneSessionUsage: Codable, Equatable {
+    var durationSeconds: Int = 0
+    var audioChunksFromWatch: Int = 0
+    var audioChunksToOpenAI: Int = 0
+    var eventsFromOpenAI: Int = 0
+    var webSearchCount: Int = 0
+    var reconnectCount: Int = 0
+}
+
 struct PhoneTranscriptSession: Identifiable, Codable, Equatable {
     let id: UUID
     let date: Date
+    var endedAt: Date?
+    var engine: VoiceEngine
     var title: String
+    var summary: String?
+    var usage: PhoneSessionUsage
     var lines: [PhoneTranscriptLine]
 
-    init(id: UUID = UUID(), date: Date = Date(), title: String, lines: [PhoneTranscriptLine] = []) {
+    enum CodingKeys: String, CodingKey {
+        case id
+        case date
+        case endedAt
+        case engine
+        case title
+        case summary
+        case usage
+        case lines
+    }
+
+    init(
+        id: UUID = UUID(),
+        date: Date = Date(),
+        endedAt: Date? = nil,
+        engine: VoiceEngine = .realtime,
+        title: String,
+        summary: String? = nil,
+        usage: PhoneSessionUsage = PhoneSessionUsage(),
+        lines: [PhoneTranscriptLine] = []
+    ) {
         self.id = id
         self.date = date
+        self.endedAt = endedAt
+        self.engine = engine
         self.title = title
+        self.summary = summary
+        self.usage = usage
         self.lines = lines
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        date = try container.decode(Date.self, forKey: .date)
+        endedAt = try container.decodeIfPresent(Date.self, forKey: .endedAt)
+        engine = try container.decodeIfPresent(VoiceEngine.self, forKey: .engine) ?? .realtime
+        title = try container.decode(String.self, forKey: .title)
+        summary = try container.decodeIfPresent(String.self, forKey: .summary)
+        usage = try container.decodeIfPresent(PhoneSessionUsage.self, forKey: .usage) ?? PhoneSessionUsage()
+        lines = try container.decode([PhoneTranscriptLine].self, forKey: .lines)
     }
 }
 
@@ -136,6 +185,10 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     @Published private(set) var lastAudioPeak: Int16 = 0
     @Published private(set) var lastWatchInputPeak: Float = 0
     @Published private(set) var transcriptSessions: [PhoneTranscriptSession] = []
+    @Published private(set) var webSearchCount = 0
+    @Published private(set) var reconnectCount = 0
+    @Published private(set) var lastOpenAIEventType = "none"
+    @Published private(set) var lastReconnectMessage: String?
 
     private let urlSession: URLSession = {
         let config = URLSessionConfiguration.default
@@ -157,6 +210,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     private var lastSentVoice = ""
     private var lastSentLanguage: AssistantLanguage = .auto
     private var lastSentWebSearchEnabled = false
+    private var lastSentVADEagerness: RealtimeVADEagerness = .low
     private var automaticTurnDetectionEnabled = true
     private var activeVoiceEngine: VoiceEngine = .realtime
     private let webSearchTimeout: TimeInterval = 8
@@ -178,6 +232,9 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     private let maxStoredTranscriptLines = 400
     private let maxStoredTranscriptSessions = 50
     private var activeTranscriptSessionID: UUID?
+    private var activeSessionStartedAt = Date()
+    private var activeSessionWebSearchStart = 0
+    private var activeSessionReconnectStart = 0
     private var defaultsObserver: NSObjectProtocol?
 
     override init() {
@@ -236,6 +293,10 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             audioChunksFromWatch = 0
             audioChunksToOpenAI = 0
             eventsFromOpenAI = 0
+            webSearchCount = 0
+            reconnectCount = 0
+            lastOpenAIEventType = "none"
+            lastReconnectMessage = nil
         }
         pendingAssistantAudio = Data()
 
@@ -278,7 +339,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
 
     private func startRegularVoice() {
         guard !isActive else {
-            sendToWatch(.ready)
+            sendToWatch(.ready, payload: [RealtimeMessageKey.voiceEngine: activeVoiceEngine.rawValue])
             return
         }
 
@@ -290,6 +351,10 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         audioChunksFromWatch = 0
         audioChunksToOpenAI = 0
         eventsFromOpenAI = 0
+        webSearchCount = 0
+        reconnectCount = 0
+        lastOpenAIEventType = "none"
+        lastReconnectMessage = nil
         regularAudioBuffer = Data()
         regularPreSpeechBuffer = Data()
         regularSilentBytes = 0
@@ -301,7 +366,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         statusText = "Think Mode"
         isActive = true
         beginKeepAlive()
-        sendToWatch(.ready)
+        sendToWatch(.ready, payload: [RealtimeMessageKey.voiceEngine: activeVoiceEngine.rawValue])
     }
 
     private func beginKeepAlive() {
@@ -344,6 +409,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     }
 
     private func stopRealtime() {
+        finalizeActiveTranscriptSession()
         receiveTask?.cancel()
         receiveTask = nil
         pingTask?.cancel()
@@ -357,6 +423,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         lastSentVoice = ""
         lastSentLanguage = .auto
         lastSentWebSearchEnabled = false
+        lastSentVADEagerness = .low
         regularTurnTask?.cancel()
         regularTurnTask = nil
         regularAudioBuffer = Data()
@@ -403,17 +470,21 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         lastSentVoice = ""
         lastSentLanguage = .auto
         lastSentWebSearchEnabled = false
+        lastSentVADEagerness = .low
 
         guard isActive else { return }
 
         guard reconnectAttempts < maxReconnectAttempts else {
-            sendErrorToWatch("Realtime disconnected after retries: \(reason). Tap stop, then start.")
+            sendErrorToWatch("Realtime disconnected after retries: \(reason). Tap stop, start again, and repeat your last request.")
             stopRealtime()
             return
         }
 
         reconnectAttempts += 1
+        reconnectCount += 1
+        lastReconnectMessage = reason
         statusText = "Reconnecting (\(reconnectAttempts)/\(maxReconnectAttempts))…"
+        sendToWatch(.connectionStatus, text: statusText)
 
         let delay = pow(2.0, Double(reconnectAttempts - 1))
         reconnectTask?.cancel()
@@ -453,13 +524,14 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
 
     private func handleOpenAIEvent(type: String, event: [String: Any]) {
         eventsFromOpenAI += 1
+        lastOpenAIEventType = type
         switch type {
         case "session.created":
             reconnectAttempts = 0
             sendSessionUpdate()
         case "session.updated":
             statusText = "Live"
-            sendToWatch(.ready)
+            sendToWatch(.ready, payload: [RealtimeMessageKey.voiceEngine: activeVoiceEngine.rawValue])
         case "error":
             let text: String
             if let direct = event["message"] as? String {
@@ -561,7 +633,9 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         let provider = BraveSearchProvider(apiKey: key, session: urlSession)
 
         await MainActor.run {
+            webSearchCount += 1
             statusText = "Searching"
+            sendToWatch(.connectionStatus, text: "Searching")
         }
 
         do {
@@ -676,7 +750,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         let turnDetection: Any = automaticTurnDetectionEnabled
             ? [
                 "type": "semantic_vad",
-                "eagerness": PhoneConfiguration.realtimeEagerness,
+                "eagerness": PhoneConfiguration.realtimeEagerness.rawValue,
                 "create_response": true,
                 "interrupt_response": true
             ]
@@ -716,6 +790,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         lastSentVoice = voice
         lastSentLanguage = PhoneConfiguration.assistantLanguage
         lastSentWebSearchEnabled = webSearchEnabled
+        lastSentVADEagerness = PhoneConfiguration.realtimeEagerness
     }
 
     private func applyVoiceChangeIfNeeded() {
@@ -725,7 +800,8 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         let voiceChanged = PhoneConfiguration.realtimeVoice != lastSentVoice
         let languageChanged = PhoneConfiguration.assistantLanguage != lastSentLanguage
         let webSearchChanged = PhoneConfiguration.realtimeWebSearchEnabled != lastSentWebSearchEnabled
-        guard voiceChanged || languageChanged || webSearchChanged else {
+        let vadChanged = PhoneConfiguration.realtimeEagerness != lastSentVADEagerness
+        guard voiceChanged || languageChanged || webSearchChanged || vadChanged else {
             return
         }
         sendSessionUpdate()
@@ -966,12 +1042,12 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         }
     }
 
-    private func sendToWatch(_ type: RealtimeMessageType, text: String? = nil) {
+    private func sendToWatch(_ type: RealtimeMessageType, text: String? = nil, payload: [String: Any] = [:]) {
         guard let wcSession, wcSession.isReachable else {
             return
         }
 
-        var payload: [String: Any] = [:]
+        var payload = payload
         if let text {
             payload[RealtimeMessageKey.text] = text
         }
@@ -1072,9 +1148,12 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
 
     private func startTranscriptSession(engine: VoiceEngine) {
         let title = engine.displayName + " chat"
-        let session = PhoneTranscriptSession(title: title)
+        let session = PhoneTranscriptSession(engine: engine, title: title)
         transcriptSessions.append(session)
         activeTranscriptSessionID = session.id
+        activeSessionStartedAt = session.date
+        activeSessionWebSearchStart = webSearchCount
+        activeSessionReconnectStart = reconnectCount
         if transcriptSessions.count > maxStoredTranscriptSessions {
             transcriptSessions = Array(transcriptSessions.suffix(maxStoredTranscriptSessions))
         }
@@ -1088,11 +1167,46 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             return activeTranscriptSessionID
         }
 
-        let session = PhoneTranscriptSession(title: activeVoiceEngine.displayName + " chat")
+        let session = PhoneTranscriptSession(engine: activeVoiceEngine, title: activeVoiceEngine.displayName + " chat")
         transcriptSessions.append(session)
         activeTranscriptSessionID = session.id
+        activeSessionStartedAt = session.date
+        activeSessionWebSearchStart = webSearchCount
+        activeSessionReconnectStart = reconnectCount
         saveTranscriptSessions()
         return session.id
+    }
+
+    private func finalizeActiveTranscriptSession() {
+        guard let sessionID = activeTranscriptSessionID,
+              let index = transcriptSessions.firstIndex(where: { $0.id == sessionID })
+        else {
+            return
+        }
+
+        let endedAt = Date()
+        transcriptSessions[index].endedAt = endedAt
+        transcriptSessions[index].usage = PhoneSessionUsage(
+            durationSeconds: max(0, Int(endedAt.timeIntervalSince(activeSessionStartedAt))),
+            audioChunksFromWatch: audioChunksFromWatch,
+            audioChunksToOpenAI: audioChunksToOpenAI,
+            eventsFromOpenAI: eventsFromOpenAI,
+            webSearchCount: max(0, webSearchCount - activeSessionWebSearchStart),
+            reconnectCount: max(0, reconnectCount - activeSessionReconnectStart)
+        )
+        let lines = transcriptSessions[index].lines
+        saveTranscriptSessions()
+
+        guard lines.count >= 2,
+              transcriptSessions[index].summary == nil,
+              !PhoneConfiguration.openAIAPIKey.isEmpty
+        else {
+            return
+        }
+
+        Task { [weak self] in
+            await self?.generateTranscriptMetadata(for: sessionID, lines: lines)
+        }
     }
 
     private func makeTranscriptTitle(from text: String) -> String {
@@ -1108,6 +1222,102 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         }
 
         return title.isEmpty ? "Voice chat" : title
+    }
+
+    private func generateTranscriptMetadata(for sessionID: UUID, lines: [PhoneTranscriptLine]) async {
+        let transcript = lines.map { line in
+            let speaker = line.speaker == .user ? "User" : "Assistant"
+            return "\(speaker): \(line.text)"
+        }
+        .joined(separator: "\n")
+
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/responses")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(PhoneConfiguration.openAIAPIKey)", forHTTPHeaderField: "authorization")
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "model": "gpt-4.1-mini",
+            "instructions": "Create compact metadata for an Apple Watch voice transcript. Return only JSON with keys title and summary. Title: 3-7 words, natural, no quotes, no trailing period. Summary: one sentence under 24 words.",
+            "input": transcript
+        ])
+
+        do {
+            let (data, response) = try await urlSession.data(for: request)
+            try validateHTTPResponse(response, data: data)
+            guard let text = try extractResponseText(from: data),
+                  let parsed = parseTranscriptMetadata(text)
+            else {
+                return
+            }
+
+            await MainActor.run {
+                guard let index = transcriptSessions.firstIndex(where: { $0.id == sessionID }) else {
+                    return
+                }
+                transcriptSessions[index].title = parsed.title
+                transcriptSessions[index].summary = parsed.summary
+                saveTranscriptSessions()
+            }
+        } catch {
+            print("[WatchGPTPhone] transcript metadata failed: \(error)")
+        }
+    }
+
+    private func extractResponseText(from data: Data) throws -> String? {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        if let outputText = json["output_text"] as? String {
+            return outputText
+        }
+
+        if let output = json["output"] as? [[String: Any]] {
+            let parts = output.compactMap { item -> String? in
+                guard let content = item["content"] as? [[String: Any]] else {
+                    return nil
+                }
+                return content.compactMap { part in
+                    part["text"] as? String
+                }.joined()
+            }
+            let joined = parts.joined(separator: "\n")
+            return joined.isEmpty ? nil : joined
+        }
+
+        return nil
+    }
+
+    private func parseTranscriptMetadata(_ text: String) -> (title: String, summary: String)? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let jsonText: String
+        if let start = trimmed.firstIndex(of: "{"),
+           let end = trimmed.lastIndex(of: "}"),
+           start <= end
+        {
+            jsonText = String(trimmed[start...end])
+        } else {
+            jsonText = trimmed
+        }
+
+        guard let data = jsonText.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawTitle = json["title"] as? String,
+              let rawSummary = json["summary"] as? String
+        else {
+            return nil
+        }
+
+        let title = rawTitle
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"."))
+        let summary = rawSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !title.isEmpty, !summary.isEmpty else {
+            return nil
+        }
+
+        return (String(title.prefix(64)), String(summary.prefix(180)))
     }
 
     private func loadTranscriptLines() {
@@ -1195,7 +1405,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": PhoneConfiguration.regularVoiceModel,
             "reasoning": [
-                "effort": PhoneConfiguration.regularReasoningEffort
+                "effort": PhoneConfiguration.regularReasoningEffort.rawValue
             ],
             "instructions": instructions,
             "input": input,
@@ -1392,9 +1602,7 @@ extension PhoneRealtimeBridge: WCSessionDelegate {
             switch type {
             case .start:
                 let automaticTurnDetection = message[RealtimeMessageKey.automaticTurnDetection] as? Bool ?? true
-                let engineRaw = message[RealtimeMessageKey.voiceEngine] as? String ?? VoiceEngine.realtime.rawValue
-                let engine = VoiceEngine(rawValue: engineRaw) ?? .realtime
-                self.startSession(engine: engine, automaticTurnDetection: automaticTurnDetection)
+                self.startSession(engine: PhoneConfiguration.defaultVoiceEngine, automaticTurnDetection: automaticTurnDetection)
             case .stop:
                 self.stopRealtime()
             case .commit:

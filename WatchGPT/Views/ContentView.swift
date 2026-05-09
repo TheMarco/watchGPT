@@ -61,6 +61,11 @@ struct ContentView: View {
 
             Spacer(minLength: 8)
 
+            Image(systemName: session.isCompanionReachable ? "iphone.radiowaves.left.and.right" : "iphone.slash")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(session.isCompanionReachable ? .green : .orange)
+                .accessibilityLabel(session.connectionStatusText)
+
             Button {
                 isShowingSettings = true
             } label: {
@@ -299,9 +304,9 @@ struct ContentView: View {
     private var statusSubtitle: String {
         switch session.phase {
         case .disconnected:
-            return "Tap the orb"
+            return session.isCompanionReachable ? "Tap the orb" : session.connectionStatusText
         case .connecting:
-            return "Opening session"
+            return session.connectionStatusText == "iPhone ready" ? "Opening session" : session.connectionStatusText
         case .connected:
             return session.isAutomaticConversationEnabled ? "Speak naturally" : "Hold the orb to talk"
         case .listening:

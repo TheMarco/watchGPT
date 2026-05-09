@@ -27,10 +27,12 @@ The watch cannot reliably open arbitrary outbound WebSockets on its own. That's 
 - **Voice barge-in toggle.** Off by default — half-duplex with tap-to-interrupt for quieter, less-echoey conversations. Flip it on if you want to interrupt the assistant by talking.
 - **38 languages.** Lock the assistant (and the transcription model) to a specific language, or leave it on Auto.
 - **Mic sensitivity preset** — High / Standard / Low for noisy rooms.
-- **Audio-reactive watch halo.** The blurred glow behind the orb breathes with your voice.
+- **Premium watch UI.** Rounded-square orb, phase-colored glow, iPhone reachability pill, polished transcript bubbles, and audio-reactive halo.
 - **AOD-aware.** When the watch enters always-on dim mode, the orb switches to a calm grayscale look so phase colors don't go stale.
-- **Transcript history** on the iPhone — every session is saved with an auto-generated title, copy/share/delete actions, native swipe-to-delete, iMessage-style chat-bubble detail view.
-- **10 voices** to choose from in iPhone settings.
+- **Transcript history** on the iPhone — every session is saved with generated title/summary, usage metadata, copy/share/delete actions, native swipe-to-delete, and iMessage-style chat-bubble detail view.
+- **Companion diagnostics** — collapsible live panel with mode, turn-taking, last OpenAI event, reconnects, mic peak, and watch chunk counts.
+- **Built-in Help and About** — colorful in-app guide, creator links, privacy notes, and license information.
+- **Per-mode voices** to choose from in iPhone settings.
 - **Idle auto-end.** Sessions tear down after 30 seconds of silence so battery and tokens don't drain when you walk away.
 - **Workout runtime** keeps the watch process alive longer than a typical 30-second background tail.
 - **API key never touches the watch.**
@@ -124,6 +126,8 @@ On the **iPhone**, hit the gear icon:
 - **Assistant language** — Auto (matches what you speak, falls back to English when uncertain) or pin to one of 38 languages.
 - **Brave Search API key** — optional. Enables `web_search` in Fast Mode. Get one free at <https://api.search.brave.com>. Think Mode does not need this.
 
+The iPhone companion main screen also includes **Help** and **About** shortcuts, plus a collapsible **Diagnostics** panel for live troubleshooting.
+
 ## Web search
 
 The assistant can fetch fresh information when you ask things like *"what's the latest…"*, *"current price of…"*, *"search the web for…"*, or any time it would otherwise have to guess from training-time data.
@@ -143,6 +147,7 @@ The most effective workaround Apple actually permits is starting a `HKWorkoutSes
 - The watch holds no key, sends no requests to OpenAI directly, and only ever talks to your iPhone.
 - Audio and transcripts go from your iPhone to OpenAI under your account — you pay for usage, you're bound by [OpenAI's usage policies](https://openai.com/policies/usage-policies/).
 - Transcript history is saved locally on the iPhone (in `UserDefaults`). Nothing is uploaded anywhere except the calls to OpenAI you explicitly trigger.
+- Transcript titles and summaries are generated through your OpenAI key after sessions end.
 - There is no analytics, no telemetry, no remote logging. The only network traffic is `wss://api.openai.com/...` and `https://api.openai.com/...`.
 - Because the iPhone build embeds your API key, **never share an `.ipa`** of this app with anyone. Treat the build like the key itself.
 

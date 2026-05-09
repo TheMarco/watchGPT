@@ -23,8 +23,11 @@ Repo: https://github.com/TheMarco/watchGPT.
 - **Audio prewarm**: `RealtimeAudioIO.prepare()` (idempotent) wires the audio graph and configures the session category on `ContentView.onAppear`, so first-tap latency drops; `start()` only does the work that needs HAL active + mic permission.
 - **AOD-neutral orb**: when `@Environment(\.isLuminanceReduced)` is true, the orb switches to a grayscale gradient and a neutral `waveform` glyph; the audio-reactive halo behind the orb is muted. Lifting the wrist clears it via the existing `scenePhase`-driven resync.
 - **Audio-reactive halo**: `RealtimeVoiceSession.lastInputPeak` is published per mic chunk and feeds the radial blur behind the orb (scale, opacity, blur radius all respond).
+- **Cohesive visual system**: the watch uses a rounded-square phase orb, branded gradient tile, iPhone reachability pill, premium transcript container, and matching chat bubbles. The iPhone companion uses the app icon in the hero/About header, layered gradient cards, visible Help/About shortcuts, and a colorful card-based Help screen.
 - Haptics were intentionally removed from the watch voice session — destabilizing.
-- The phone companion stores chat transcripts as separate sessions with generated titles. The detail view is iMessage-style chat bubbles. Native swipe-to-delete with no confirmation; the trash icon inside the detail view confirms before deleting.
+- The phone companion stores chat transcripts as separate sessions with generated titles, one-sentence summaries, and usage metadata. The detail view is iMessage-style chat bubbles. Native swipe-to-delete with no confirmation; the trash icon inside the detail view confirms before deleting.
+- The phone companion has a collapsible diagnostics panel on the main screen. It starts closed and expands to show mode, Fast Mode turn-taking, last OpenAI event, reconnects, mic peak, and watch chunks.
+- Help/About are available both from the main companion screen and Settings. `PhoneHelpView` and `PhoneAboutView` are shared top-level views rather than private to Settings.
 - `icon.png` at the repo root is the source image for both app icons:
   - watch target uses `AppIcon`
   - phone target uses `PhoneAppIcon`
@@ -37,12 +40,13 @@ The iPhone companion sidesteps that by holding the OpenAI connection and relayin
 
 ## UX
 
-The watch shows a large orb.
+The watch shows a large rounded-square orb.
 
 - From disconnected: tap the orb to start a session.
 - In hands-free mode: speak naturally after startup.
 - In push-to-talk mode: hold the orb to talk, release to commit.
 - Tap-to-interrupt during `.speaking` always works (it routes through `beginTurn` → `recoverToConnected`, clearing the playback echo guard and `awaitingAssistantResponse`).
+- The watch top bar shows a small branded gradient tile, an iPhone reachability pill, and the Settings button.
 - Settings on the watch cover interaction/runtime: hands-free, audio replies, mic sensitivity, voice barge-in, workout keep-alive, and clear chat. Model-facing choices live on the iPhone: default mode, per-mode voice, Fast Mode VAD eagerness, Think Mode reasoning, language, and search keys.
 
 Watch phase machine:
@@ -58,7 +62,8 @@ disconnected -> connecting -> connected <-> listening
 
 - `WatchGPT/` - watchOS target, Swift 5, deployment target 11.0
   - `WatchGPTApp.swift` - app entry, registers defaults.
-  - `Views/ContentView.swift` - orb UI (TimelineView-driven, AOD-aware, audio-reactive halo), transcript view, stop/settings controls.
+  - `Views/ContentView.swift` - rounded-square orb UI (TimelineView-driven, AOD-aware, audio-reactive halo/ripples), reachability/status top bar, transcript view, stop/settings controls.
+  - `Views/RealtimeTranscriptBubble.swift` - watch transcript bubble styling shared by live/final transcript lines.
   - `Views/SettingsView.swift` - hands-free, audio replies, mic sensitivity, voice barge-in, workout keep-alive, clear chat.
   - `Services/RealtimeVoiceSession.swift` - watch-side phase machine and `WCSession` client. Owns the idle watchdog, the playback-echo guard, the `awaitingAssistantResponse` flag, and `lastInputPeak` for the halo.
   - `Services/RealtimeAudioIO.swift` - watch mic capture and playback. 24 kHz PCM16 mono. Uses `.voiceChat`, enables voice processing, exposes `prepare()` for cold-start prewarm and a settable `inputGain` for the sensitivity preset.
@@ -68,8 +73,8 @@ disconnected -> connecting -> connected <-> listening
   - `Assets.xcassets/AppIcon.appiconset` - watch icon renditions generated from root `icon.png`.
 - `WatchGPTPhone/` - iOS companion target, Swift 5, deployment target 17.0
   - `WatchGPTPhoneApp.swift` - app entry, activates `PhoneRealtimeBridge`.
-  - `Views/PhoneContentView.swift` - hero status card with TimelineView pulse, diagnostics panel, transcript list (insetGrouped, leading badges), iMessage-style chat-bubble detail view with usage metadata.
-  - `Views/PhoneSettingsView.swift` - OpenAI API key, default mode, per-mode voice, Fast Mode turn-taking, Think Mode reasoning, language picker, Brave Search key.
+  - `Views/PhoneContentView.swift` - app-icon hero status card with TimelineView pulse, Help/About shortcuts, collapsible diagnostics panel, transcript list (insetGrouped, leading badges), iMessage-style chat-bubble detail view with usage metadata, and shared `PhoneAppIconImage`.
+  - `Views/PhoneSettingsView.swift` - OpenAI API key, default mode, per-mode voice, Fast Mode turn-taking, Think Mode reasoning, language picker, Brave Search key, colorful `PhoneHelpView`, and `PhoneAboutView`.
   - `Services/PhoneRealtimeBridge.swift` - phone-side bridge for both engines, transcript persistence, OpenAI calls, keep-alive, web-search tool execution. Inlines `WebSearchProvider`/`BraveSearchProvider` at the top of the file.
   - `Support/PhoneConfiguration.swift` - model names, API keys (OpenAI + Brave), voice config, endpoint builders, language enum, effective-instructions composition.
   - `Config/WatchGPTPhone.xcconfig` - committed; includes gitignored `LocalSecrets.xcconfig`.
@@ -130,6 +135,7 @@ The phone companion persists transcript sessions in `UserDefaults`.
 - On the first user utterance, the title is replaced with a short local fallback title derived from the utterance. When the session ends, the phone asks OpenAI for compact transcript metadata and stores a better title plus one-sentence summary.
 - Session usage metadata is saved with each transcript: duration, approximate mic audio, OpenAI event count, web searches, reconnects, and engine.
 - `PhoneContentView` shows session history (insetGrouped list with leading badges), an iMessage-style chat-bubble detail view (asymmetric corner bubbles, accent fill for user, material for assistant), copy/share via context menu, native swipe-to-delete with no extra confirmation, and a `Clear all` button in the section header that does confirm.
+- `PhoneAppIconImage` reads the bundled primary app icon via `CFBundleIcons` and falls back to a generated gradient symbol if needed. It is intentionally shared by the main hero and About screen.
 
 ## Runtime / Sleep Notes
 
@@ -175,6 +181,23 @@ xcrun --sdk watchos swiftc -typecheck \
   WatchGPT/Support/AppConfiguration.swift \
   WatchGPT/Services/RealtimeAudioIO.swift \
   WatchGPT/Services/RealtimeVoiceSession.swift \
+  -target arm64-apple-watchos11.0 \
+  -module-cache-path /tmp/WatchGPTSwiftModuleCache
+
+# Typecheck watch UI without Preview macros.
+mkdir -p /tmp/watchgpt-typecheck-watch
+awk '/#Preview/ {exit} {print}' WatchGPT/Views/ContentView.swift > /tmp/watchgpt-typecheck-watch/ContentView.swift
+awk '/#Preview/ {exit} {print}' WatchGPT/Views/SettingsView.swift > /tmp/watchgpt-typecheck-watch/SettingsView.swift
+xcrun --sdk watchos swiftc -typecheck \
+  Shared/RealtimeMessages.swift \
+  WatchGPT/Models/RealtimeTranscriptLine.swift \
+  WatchGPT/Support/AppConfiguration.swift \
+  WatchGPT/Services/RealtimeAudioIO.swift \
+  WatchGPT/Services/RealtimeVoiceSession.swift \
+  WatchGPT/Views/RealtimeTranscriptBubble.swift \
+  /tmp/watchgpt-typecheck-watch/ContentView.swift \
+  /tmp/watchgpt-typecheck-watch/SettingsView.swift \
+  WatchGPT/WatchGPTApp.swift \
   -target arm64-apple-watchos11.0 \
   -module-cache-path /tmp/WatchGPTSwiftModuleCache
 

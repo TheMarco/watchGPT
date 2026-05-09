@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var session = RealtimeVoiceSession()
     @State private var isShowingSettings = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -41,6 +42,11 @@ struct ContentView: View {
         }
         .onAppear {
             session.prewarmAudio()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                session.handleSceneReactivated()
+            }
         }
     }
 

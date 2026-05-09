@@ -145,6 +145,17 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         audioIO.prepare()
     }
 
+    // Wrist-raise / scene reactivation can leave SwiftUI showing a stale
+    // frame and the audio engine briefly stopped; nudge both back to life.
+    func handleSceneReactivated() {
+        guard phase != .disconnected else {
+            return
+        }
+
+        audioIO.restartIfNeeded()
+        objectWillChange.send()
+    }
+
     func stop() {
         wcSession?.sendMessage(
             RealtimeMessage.encode(.stop),

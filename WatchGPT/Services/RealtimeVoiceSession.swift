@@ -42,6 +42,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
                 // they shouldn't be charged for time spent listening to the assistant.
                 if oldValue == .speaking {
                     lastActivityAt = Date()
+                    awaitingAssistantResponse = false
                 }
             }
         }
@@ -67,6 +68,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     private let responseTimeout: TimeInterval = 12
     private var lastActivityAt = Date()
     private let idleTimeoutSeconds: TimeInterval = 30
+    private var awaitingAssistantResponse = false
 
     override init() {
         wcSession = WCSession.isSupported() ? WCSession.default : nil
@@ -178,6 +180,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         playbackEndsAt = .distantPast
         assistantPlaybackStartedAt = .distantPast
         lastInputPeak = 0
+        awaitingAssistantResponse = false
         phase = .disconnected
     }
 
@@ -235,6 +238,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         audioIO.stopPlayback()
         playbackEndsAt = .distantPast
         assistantDraft = ""
+        awaitingAssistantResponse = false
         phase = .connected
     }
 
@@ -333,6 +337,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             }
         case .speechStarted:
             awaitingResponseSince = nil
+            awaitingAssistantResponse = false
             noteActivity()
             if isAutomaticConversationEnabled {
                 if isInPlaybackEchoWindow() {
@@ -344,6 +349,9 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             }
         case .speechStopped:
             noteActivity()
+            if isAutomaticConversationEnabled {
+                awaitingAssistantResponse = true
+            }
         case .userTranscript:
             awaitingResponseSince = nil
             noteActivity()
@@ -409,9 +417,10 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
 
             // Suppress mic during early assistant playback so OpenAI's semantic VAD
             // doesn't see speaker echo (AEC unconverged on turn 1) and fire
-            // interrupt_response. With barge-in off, suppress for the entire
-            // playback (full half-duplex). Tap-to-interrupt clears playbackEndsAt
-            // so it bypasses either guard.
+            // interrupt_response. With barge-in off, suppress through the entire
+            // wait-for-assistant window (speech_stopped → response done) so a
+            // breath or background noise during the "thinking" gap can't trigger
+            // interrupt_response either. Tap-to-interrupt clears both guards.
             if voiceEngineForSession == .realtime {
                 let bargeInEnabled = UserDefaults.standard.bool(
                     forKey: AppConfiguration.voiceBargeInKey,
@@ -422,7 +431,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
                         return
                     }
                 } else {
-                    if phase == .speaking {
+                    if phase == .speaking || awaitingAssistantResponse {
                         return
                     }
                 }

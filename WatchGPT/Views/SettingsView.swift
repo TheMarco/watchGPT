@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage(AppConfiguration.workoutRuntimeKey) private var workoutRuntime = true
     @AppStorage(AppConfiguration.speakRepliesKey) private var speakReplies = true
     @AppStorage(AppConfiguration.micSensitivityKey) private var micSensitivity = MicSensitivity.default.rawValue
+    @AppStorage(AppConfiguration.voiceBargeInKey) private var voiceBargeIn = true
 
     let onReset: () -> Void
 
@@ -43,10 +44,15 @@ struct SettingsView: View {
                         Text(option.displayName).tag(option.rawValue)
                     }
                 }
+
+                Toggle(isOn: $voiceBargeIn) {
+                    Label("Voice barge-in", systemImage: "waveform.path.ecg")
+                }
+                .tint(.accentColor)
             } header: {
                 Text("Microphone")
             } footer: {
-                Text("Lower sensitivity if background noise (TV, kids, traffic) keeps interfering. Applies on the next session start.")
+                Text("Lower sensitivity if background noise interferes. Turn barge-in off if the assistant keeps cutting itself off — you can still tap the orb to interrupt.")
             }
 
             Section {

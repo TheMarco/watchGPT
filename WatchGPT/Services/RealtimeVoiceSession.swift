@@ -404,10 +404,23 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
 
             // Suppress mic during early assistant playback so OpenAI's semantic VAD
             // doesn't see speaker echo (AEC unconverged on turn 1) and fire
-            // interrupt_response. Window matches shouldIgnoreLikelyPlaybackEcho;
-            // tap-to-interrupt clears playbackEndsAt so it bypasses this guard.
-            if voiceEngineForSession == .realtime, isInPlaybackEchoWindow() {
-                return
+            // interrupt_response. With barge-in off, suppress for the entire
+            // playback (full half-duplex). Tap-to-interrupt clears playbackEndsAt
+            // so it bypasses either guard.
+            if voiceEngineForSession == .realtime {
+                let bargeInEnabled = UserDefaults.standard.bool(
+                    forKey: AppConfiguration.voiceBargeInKey,
+                    default: true
+                )
+                if bargeInEnabled {
+                    if isInPlaybackEchoWindow() {
+                        return
+                    }
+                } else {
+                    if phase == .speaking {
+                        return
+                    }
+                }
             }
         } else {
             guard phase == .listening else {

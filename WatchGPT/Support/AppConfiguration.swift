@@ -32,6 +32,7 @@ enum AppConfiguration {
     static let workoutRuntimeKey = "workoutRuntime"
     static let speakRepliesKey = "speakReplies"
     static let micSensitivityKey = "micSensitivity"
+    static let voiceBargeInKey = "voiceBargeIn"
     static let maxStoredMessages = 24
 
     static var micSensitivity: MicSensitivity {
@@ -45,7 +46,8 @@ enum AppConfiguration {
             voiceEngineKey: VoiceEngine.realtime.rawValue,
             workoutRuntimeKey: true,
             speakRepliesKey: true,
-            micSensitivityKey: MicSensitivity.default.rawValue
+            micSensitivityKey: MicSensitivity.default.rawValue,
+            voiceBargeInKey: true
         ])
     }
 }

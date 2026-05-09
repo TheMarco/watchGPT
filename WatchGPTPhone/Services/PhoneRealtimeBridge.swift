@@ -909,13 +909,22 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             input = "\(context)\nUser: \(transcript)"
         }
 
+        let instructions = PhoneConfiguration.effectiveInstructions
+            + " You have a web_search tool. Use it for current, recent, or time-sensitive information"
+            + " (news, prices, releases, scores, weather, software versions, recent events) and whenever"
+            + " the user asks you to search, look up, or check online. Skip it for timeless or general"
+            + " knowledge. When you do search, mention source names and dates briefly when useful, and"
+            + " never invent citations or claims that aren't in the results."
+
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": PhoneConfiguration.regularVoiceModel,
             "reasoning": [
                 "effort": PhoneConfiguration.regularReasoningEffort
             ],
-            "instructions": PhoneConfiguration.effectiveInstructions,
-            "input": input
+            "instructions": instructions,
+            "input": input,
+            "tools": [["type": "web_search"]],
+            "tool_choice": "auto"
         ])
 
         let (data, response) = try await urlSession.data(for: request)

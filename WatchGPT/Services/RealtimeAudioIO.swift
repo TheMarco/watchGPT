@@ -33,6 +33,7 @@ final class RealtimeAudioIO {
 
     private var audioPlayer: AVAudioPlayer?
     private var isStarted = false
+    private var isPrepared = false
     private var audioOutBuffer = Data()
     private let audioOutLock = NSLock()
     private let audioOutFlushBytes = 9_600
@@ -40,24 +41,42 @@ final class RealtimeAudioIO {
     private let outputGain: Float = 2.0
     private var interruptionObserver: NSObjectProtocol?
 
-    func start(onInputAudio: @escaping @Sendable (Data, Float) -> Void) throws {
-        if isStarted {
+    // Wires the graph and sets the session category without activating it,
+    // so the cold-start cost on first orb tap is paid up front.
+    func prepare() {
+        if isPrepared || isStarted {
             return
         }
 
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat)
-        try session.setActive(true)
+        try? session.setCategory(.playAndRecord, mode: .voiceChat)
 
         engine.attach(playerNode)
         engine.connect(playerNode, to: engine.mainMixerNode, format: playbackFormat)
         engine.mainMixerNode.outputVolume = 1.0
         playerNode.volume = 1.0
 
+        try? engine.inputNode.setVoiceProcessingEnabled(true)
+        try? engine.outputNode.setVoiceProcessingEnabled(true)
+
+        engine.prepare()
+        isPrepared = true
+    }
+
+    func start(onInputAudio: @escaping @Sendable (Data, Float) -> Void) throws {
+        if isStarted {
+            return
+        }
+
+        if !isPrepared {
+            prepare()
+        }
+
+        let session = AVAudioSession.sharedInstance()
+        try session.setActive(true)
+
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
-        try? inputNode.setVoiceProcessingEnabled(true)
-        try? engine.outputNode.setVoiceProcessingEnabled(true)
 
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw RealtimeAudioIOError.inputFormatUnavailable
@@ -94,7 +113,6 @@ final class RealtimeAudioIO {
             }
         }
 
-        engine.prepare()
         try engine.start()
         playerNode.play()
         isStarted = true

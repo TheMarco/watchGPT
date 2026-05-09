@@ -141,6 +141,10 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         lastActivityAt = Date()
     }
 
+    func prewarmAudio() {
+        audioIO.prepare()
+    }
+
     func stop() {
         wcSession?.sendMessage(
             RealtimeMessage.encode(.stop),

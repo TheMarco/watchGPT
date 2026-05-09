@@ -39,6 +39,9 @@ struct ContentView: View {
         } message: {
             Text(session.errorMessage ?? "Something went wrong.")
         }
+        .onAppear {
+            session.prewarmAudio()
+        }
     }
 
     private var topBar: some View {

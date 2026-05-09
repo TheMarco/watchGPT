@@ -5,7 +5,6 @@ struct PhoneContentView: View {
     @ObservedObject private var bridge = PhoneRealtimeBridge.shared
     @State private var showingSettings = false
     @State private var showingClearConfirmation = false
-    @State private var sessionPendingDeletion: PhoneTranscriptSession?
     @State private var didCopyTranscript = false
 
     var body: some View {
@@ -33,19 +32,6 @@ struct PhoneContentView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will permanently remove every saved transcript.")
-            }
-            .confirmationDialog(
-                deletionDialogTitle,
-                isPresented: deletionDialogBinding,
-                titleVisibility: .visible,
-                presenting: sessionPendingDeletion
-            ) { session in
-                Button("Delete", role: .destructive) {
-                    bridge.deleteTranscriptSession(id: session.id)
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: { _ in
-                Text("This transcript will be permanently removed.")
             }
             .sheet(isPresented: $showingSettings) {
                 NavigationStack {
@@ -230,7 +216,7 @@ struct PhoneContentView: View {
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                sessionPendingDeletion = session
+                                bridge.deleteTranscriptSession(id: session.id)
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -326,20 +312,6 @@ struct PhoneContentView: View {
     }
 
     // MARK: - Helpers
-
-    private var deletionDialogBinding: Binding<Bool> {
-        Binding(
-            get: { sessionPendingDeletion != nil },
-            set: { if !$0 { sessionPendingDeletion = nil } }
-        )
-    }
-
-    private var deletionDialogTitle: String {
-        if let title = sessionPendingDeletion?.title, !title.isEmpty {
-            return "Delete \"\(title)\"?"
-        }
-        return "Delete this transcript?"
-    }
 
     private var transcriptText: String {
         bridge.transcriptSessions.map { session in

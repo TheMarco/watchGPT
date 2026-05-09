@@ -24,9 +24,18 @@ enum VoiceEngine: String, CaseIterable {
     var displayName: String {
         switch self {
         case .realtime:
-            return "Realtime"
+            return "Fast Mode"
         case .gpt5:
-            return "GPT-5.5"
+            return "Think Mode"
+        }
+    }
+
+    var modelDescription: String {
+        switch self {
+        case .realtime:
+            return "gpt-realtime · streaming speech"
+        case .gpt5:
+            return "gpt-5.5 · slower, smarter"
         }
     }
 }

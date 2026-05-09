@@ -207,7 +207,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         regularTurnInProgress = false
         regularConversationContext = []
         startTranscriptSession(engine: .gpt5)
-        statusText = "GPT-5.5 voice"
+        statusText = "Think Mode"
         isActive = true
         beginKeepAlive()
         sendToWatch(.ready)
@@ -539,7 +539,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         regularSpeechCandidateBytes = 0
         regularSpeechActive = false
         if !regularTurnInProgress {
-            statusText = "GPT-5.5 voice"
+            statusText = "Think Mode"
         }
     }
 
@@ -581,7 +581,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             guard !trimmedTranscript.isEmpty else {
                 await MainActor.run {
                     regularTurnInProgress = false
-                    statusText = "GPT-5.5 voice"
+                    statusText = "Think Mode"
                     sendToWatch(.responseDone)
                 }
                 return
@@ -613,20 +613,20 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
                 sendToWatch(.responseDone)
                 regularTurnInProgress = false
                 regularTurnTask = nil
-                statusText = "GPT-5.5 voice"
+                statusText = "Think Mode"
             }
         } catch is CancellationError {
             await MainActor.run {
                 regularTurnInProgress = false
                 regularTurnTask = nil
-                statusText = isActive ? "GPT-5.5 voice" : "Waiting for watch"
+                statusText = isActive ? "Think Mode" : "Waiting for watch"
             }
         } catch {
             await MainActor.run {
                 regularTurnInProgress = false
                 regularTurnTask = nil
                 if !isCancellationError(error) {
-                    sendErrorToWatch("GPT-5.5 voice failed: \(error.localizedDescription)")
+                    sendErrorToWatch("Think Mode failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -787,7 +787,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     }
 
     private func startTranscriptSession(engine: VoiceEngine) {
-        let title = engine == .gpt5 ? "GPT-5.5 chat" : "Realtime chat"
+        let title = engine.displayName + " chat"
         let session = PhoneTranscriptSession(title: title)
         transcriptSessions.append(session)
         activeTranscriptSessionID = session.id
@@ -804,7 +804,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             return activeTranscriptSessionID
         }
 
-        let session = PhoneTranscriptSession(title: activeVoiceEngine == .gpt5 ? "GPT-5.5 chat" : "Realtime chat")
+        let session = PhoneTranscriptSession(title: activeVoiceEngine.displayName + " chat")
         transcriptSessions.append(session)
         activeTranscriptSessionID = session.id
         saveTranscriptSessions()

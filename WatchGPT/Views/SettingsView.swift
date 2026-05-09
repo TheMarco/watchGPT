@@ -8,10 +8,14 @@ struct SettingsView: View {
 
     let onReset: () -> Void
 
+    private var currentEngine: VoiceEngine {
+        VoiceEngine(rawValue: voiceEngine) ?? .realtime
+    }
+
     var body: some View {
         List {
-            Section("Voice") {
-                Picker("Engine", selection: $voiceEngine) {
+            Section {
+                Picker("Mode", selection: $voiceEngine) {
                     ForEach(VoiceEngine.allCases, id: \.rawValue) { engine in
                         Text(engine.displayName).tag(engine.rawValue)
                     }
@@ -26,6 +30,10 @@ struct SettingsView: View {
                     Label("Audio replies", systemImage: "speaker.wave.2.fill")
                 }
                 .tint(.accentColor)
+            } header: {
+                Text("Voice")
+            } footer: {
+                Text(currentEngine.modelDescription)
             }
 
             Section {

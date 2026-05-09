@@ -77,7 +77,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             return "Connecting"
         case .connected:
             if voiceEngineForSession == .gpt5 {
-                return isAutomaticConversationEnabled ? "GPT-5.5 ready" : "GPT-5.5 hold"
+                return isAutomaticConversationEnabled ? "Think Mode ready" : "Think Mode hold"
             }
             return isAutomaticConversationEnabled ? "Ready to chat" : "Hold to talk"
         case .listening:

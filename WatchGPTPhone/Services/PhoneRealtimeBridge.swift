@@ -67,6 +67,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     private var pendingAssistantAudio = Data()
     private let pendingAssistantFlushBytes = 9_600
     private var lastSentVoice = ""
+    private var lastSentLanguage: AssistantLanguage = .auto
     private var automaticTurnDetectionEnabled = true
     private var activeVoiceEngine: VoiceEngine = .realtime
     private var regularAudioBuffer = Data()
@@ -264,6 +265,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         webSocket = nil
         pendingAssistantAudio = Data()
         lastSentVoice = ""
+        lastSentLanguage = .auto
         regularTurnTask?.cancel()
         regularTurnTask = nil
         regularAudioBuffer = Data()
@@ -308,6 +310,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         webSocket = nil
         pendingAssistantAudio = Data()
         lastSentVoice = ""
+        lastSentLanguage = .auto
 
         guard isActive else { return }
 
@@ -446,7 +449,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         sendOpenAIEvent([
             "type": "session.update",
             "session": [
-                "instructions": PhoneConfiguration.realtimeInstructions,
+                "instructions": PhoneConfiguration.effectiveInstructions,
                 "modalities": ["text", "audio"],
                 "voice": voice,
                 "input_audio_format": "pcm16",
@@ -458,14 +461,16 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             ]
         ])
         lastSentVoice = voice
+        lastSentLanguage = PhoneConfiguration.assistantLanguage
     }
 
     private func applyVoiceChangeIfNeeded() {
         guard webSocket != nil else {
             return
         }
-        let current = PhoneConfiguration.realtimeVoice
-        guard current != lastSentVoice else {
+        let voiceChanged = PhoneConfiguration.realtimeVoice != lastSentVoice
+        let languageChanged = PhoneConfiguration.assistantLanguage != lastSentLanguage
+        guard voiceChanged || languageChanged else {
             return
         }
         sendSessionUpdate()
@@ -903,7 +908,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             "reasoning": [
                 "effort": PhoneConfiguration.regularReasoningEffort
             ],
-            "instructions": PhoneConfiguration.realtimeInstructions,
+            "instructions": PhoneConfiguration.effectiveInstructions,
             "input": input
         ])
 

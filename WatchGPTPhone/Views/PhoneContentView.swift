@@ -5,7 +5,6 @@ struct PhoneContentView: View {
     @ObservedObject private var bridge = PhoneRealtimeBridge.shared
     @State private var showingSettings = false
     @State private var showingClearConfirmation = false
-    @State private var didCopyTranscript = false
 
     var body: some View {
         NavigationStack {
@@ -38,11 +37,6 @@ struct PhoneContentView: View {
                     PhoneSettingsView()
                 }
             }
-            .overlay(alignment: .bottom) {
-                if didCopyTranscript {
-                    copiedToast
-                }
-            }
             .animation(.smooth(duration: 0.35), value: bridge.isActive)
             .animation(.smooth(duration: 0.25), value: bridge.statusText)
         }
@@ -50,13 +44,6 @@ struct PhoneContentView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            ShareLink(item: transcriptText) {
-                Image(systemName: "square.and.arrow.up")
-            }
-            .disabled(bridge.transcriptSessions.isEmpty)
-        }
-
         ToolbarItem(placement: .topBarTrailing) {
             Button {
                 showingSettings = true
@@ -311,34 +298,6 @@ struct PhoneContentView: View {
         session.lines.first?.text ?? "No messages yet"
     }
 
-    // MARK: - Helpers
-
-    private var transcriptText: String {
-        bridge.transcriptSessions.map { session in
-            let lines = session.lines.map { line in
-                let speaker = line.speaker == .user ? "You" : "WatchGPT"
-                return "\(speaker): \(line.text)"
-            }
-            .joined(separator: "\n\n")
-
-            return "\(session.title)\n\(lines)"
-        }
-        .joined(separator: "\n\n---\n\n")
-    }
-
-    private var copiedToast: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-            Text("Copied")
-                .font(.callout.weight(.semibold))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.thinMaterial, in: Capsule())
-        .padding(.bottom, 24)
-        .transition(.scale(scale: 0.9).combined(with: .opacity))
-    }
 }
 
 struct PhoneTranscriptDetailView: View {

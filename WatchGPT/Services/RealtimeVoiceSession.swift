@@ -424,7 +424,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             if voiceEngineForSession == .realtime {
                 let bargeInEnabled = UserDefaults.standard.bool(
                     forKey: AppConfiguration.voiceBargeInKey,
-                    default: true
+                    default: false
                 )
                 if bargeInEnabled {
                     if isInPlaybackEchoWindow() {

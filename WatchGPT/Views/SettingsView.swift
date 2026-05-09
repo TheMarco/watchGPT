@@ -6,7 +6,7 @@ struct SettingsView: View {
     @AppStorage(AppConfiguration.workoutRuntimeKey) private var workoutRuntime = true
     @AppStorage(AppConfiguration.speakRepliesKey) private var speakReplies = true
     @AppStorage(AppConfiguration.micSensitivityKey) private var micSensitivity = MicSensitivity.default.rawValue
-    @AppStorage(AppConfiguration.voiceBargeInKey) private var voiceBargeIn = true
+    @AppStorage(AppConfiguration.voiceBargeInKey) private var voiceBargeIn = false
 
     let onReset: () -> Void
 

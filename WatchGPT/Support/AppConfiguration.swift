@@ -47,7 +47,7 @@ enum AppConfiguration {
             workoutRuntimeKey: true,
             speakRepliesKey: true,
             micSensitivityKey: MicSensitivity.default.rawValue,
-            voiceBargeInKey: true
+            voiceBargeInKey: false
         ])
     }
 }

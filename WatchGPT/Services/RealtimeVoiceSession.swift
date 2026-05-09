@@ -44,6 +44,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     @Published private(set) var latestUserTranscript = ""
     @Published private(set) var latestAssistantTranscript = ""
     @Published private(set) var transcriptLines: [RealtimeTranscriptLine] = []
+    @Published private(set) var lastInputPeak: Float = 0
     @Published var errorMessage: String?
 
     private let audioIO = RealtimeAudioIO()
@@ -171,6 +172,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         hasStartedAudio = false
         playbackEndsAt = .distantPast
         assistantPlaybackStartedAt = .distantPast
+        lastInputPeak = 0
         phase = .disconnected
     }
 
@@ -388,6 +390,8 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         guard hasStartedAudio else {
             return
         }
+
+        lastInputPeak = inputPeak
 
         if isAutomaticConversationEnabled {
             if voiceEngineForSession == .gpt5, phase == .speaking {

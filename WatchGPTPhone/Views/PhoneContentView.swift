@@ -11,32 +11,17 @@ struct PhoneContentView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                statusCard
+                statusHero
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
+                    .padding(.top, 8)
+                    .padding(.bottom, 14)
 
                 transcriptsList
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("WatchGPT")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    ShareLink(item: transcriptText) {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .disabled(bridge.transcriptSessions.isEmpty)
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                }
-            }
+            .toolbar { toolbarContent }
             .confirmationDialog(
                 "Clear all transcripts?",
                 isPresented: $showingClearConfirmation,
@@ -69,98 +54,171 @@ struct PhoneContentView: View {
             }
             .overlay(alignment: .bottom) {
                 if didCopyTranscript {
-                    Text("Copied")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(.thinMaterial, in: Capsule())
-                        .padding(.bottom, 24)
-                        .transition(.opacity)
+                    copiedToast
                 }
+            }
+            .animation(.smooth(duration: 0.35), value: bridge.isActive)
+            .animation(.smooth(duration: 0.25), value: bridge.statusText)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            ShareLink(item: transcriptText) {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .disabled(bridge.transcriptSessions.isEmpty)
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showingSettings = true
+            } label: {
+                Image(systemName: "gearshape")
             }
         }
     }
 
-    private var deletionDialogBinding: Binding<Bool> {
-        Binding(
-            get: { sessionPendingDeletion != nil },
-            set: { if !$0 { sessionPendingDeletion = nil } }
-        )
-    }
+    // MARK: - Hero
 
-    private var deletionDialogTitle: String {
-        if let title = sessionPendingDeletion?.title, !title.isEmpty {
-            return "Delete \"\(title)\"?"
-        }
-        return "Delete this transcript?"
-    }
+    private var statusHero: some View {
+        VStack(spacing: 14) {
+            heroIcon
 
-    private var statusCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(statusTint.opacity(0.18))
-                        .frame(width: 40, height: 40)
-                    Image(systemName: "applewatch.radiowaves.left.and.right")
-                        .font(.title3)
-                        .foregroundStyle(statusTint)
-                }
+            VStack(spacing: 4) {
+                Text(bridge.statusText)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .contentTransition(.opacity)
+                    .multilineTextAlignment(.center)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(bridge.statusText)
-                        .font(.headline)
-                    Text(keyStatusText)
-                        .font(.caption)
-                        .foregroundStyle(PhoneConfiguration.openAIAPIKey.isEmpty ? .orange : .secondary)
-                }
-
-                Spacer()
+                Text(heroSubline)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
 
             if bridge.isActive {
-                HStack(spacing: 14) {
-                    metric("watch", "\(bridge.audioChunksFromWatch)")
-                    metric("openai", "\(bridge.audioChunksToOpenAI)")
-                    metric("events", "\(bridge.eventsFromOpenAI)")
-                    Spacer()
-                    Text(String(format: "mic %.3f", bridge.lastWatchInputPeak))
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(bridge.lastWatchInputPeak == 0 ? .red : .secondary)
-                }
+                metricsStrip
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .padding(.horizontal, 18)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .overlay(alignment: .top) {
+                    LinearGradient(
+                        colors: [heroTint.opacity(bridge.isActive ? 0.18 : 0.10), .clear],
+                        startPoint: .top,
+                        endPoint: .center
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(heroTint.opacity(0.16), lineWidth: 0.5)
+                }
+        }
+    }
+
+    private var heroIcon: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !bridge.isActive)) { timeline in
+            let phase = bridge.isActive
+                ? (sin(timeline.date.timeIntervalSinceReferenceDate * 2.2) + 1) / 2
+                : 0.0
+
+            ZStack {
+                Circle()
+                    .fill(heroTint.opacity(0.16))
+                    .frame(width: 72, height: 72)
+
+                if bridge.isActive {
+                    Circle()
+                        .stroke(heroTint.opacity(0.18 + phase * 0.32), lineWidth: 1.5)
+                        .frame(width: 72 + phase * 14, height: 72 + phase * 14)
+                }
+
+                Image(systemName: heroIconName)
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(heroTint)
+                    .symbolRenderingMode(.hierarchical)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+        }
+    }
+
+    private var heroIconName: String {
+        if PhoneConfiguration.openAIAPIKey.isEmpty {
+            return "key.horizontal"
+        }
+        if bridge.isActive {
+            return "applewatch.radiowaves.left.and.right"
+        }
+        return "applewatch"
+    }
+
+    private var heroSubline: String {
+        if PhoneConfiguration.openAIAPIKey.isEmpty {
+            return "Add your OpenAI API key in Settings to begin."
+        }
+        if bridge.isActive {
+            return "Streaming to OpenAI. Keep WatchGPT open on both devices."
+        }
+        return "Tap the orb on your Apple Watch to start a conversation."
+    }
+
+    private var heroTint: Color {
+        if PhoneConfiguration.openAIAPIKey.isEmpty {
+            return .orange
+        }
+        return bridge.isActive ? .green : .accentColor
+    }
+
+    private var metricsStrip: some View {
+        HStack(spacing: 0) {
+            metric("WATCH", "\(bridge.audioChunksFromWatch)")
+            metricDivider
+            metric("OPENAI", "\(bridge.audioChunksToOpenAI)")
+            metricDivider
+            metric("EVENTS", "\(bridge.eventsFromOpenAI)")
+            metricDivider
+            metric("MIC", String(format: "%.2f", bridge.lastWatchInputPeak))
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 4)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var metricDivider: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.18))
+            .frame(width: 1, height: 22)
     }
 
     private func metric(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label.uppercased())
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(.callout, design: .rounded).weight(.semibold))
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+            Text(label)
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(.caption, design: .monospaced))
+                .kerning(0.6)
         }
+        .frame(maxWidth: .infinity)
     }
 
-    private var statusTint: Color {
-        bridge.isActive ? .green : .cyan
-    }
+    // MARK: - Transcripts
 
     @ViewBuilder
     private var transcriptsList: some View {
         if bridge.transcriptSessions.isEmpty {
-            VStack {
-                Spacer()
-                ContentUnavailableView(
-                    "No transcripts yet",
-                    systemImage: "text.bubble",
-                    description: Text("Chats from the watch will appear here.")
-                )
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            emptyState
         } else {
             List {
                 Section {
@@ -198,10 +256,89 @@ struct PhoneContentView: View {
         }
     }
 
-    private var keyStatusText: String {
-        PhoneConfiguration.openAIAPIKey.isEmpty
-            ? "Add an OpenAI API key in Settings"
-            : "API key configured"
+    private var emptyState: some View {
+        VStack(spacing: 18) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.14))
+                    .frame(width: 100, height: 100)
+                Image(systemName: "waveform.badge.mic")
+                    .font(.system(size: 38, weight: .regular))
+                    .foregroundStyle(.tint)
+                    .symbolRenderingMode(.hierarchical)
+            }
+
+            VStack(spacing: 6) {
+                Text("Nothing here yet")
+                    .font(.title3.weight(.semibold))
+                Text("Talk to WatchGPT on your Apple Watch.\nYour conversations will appear here.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+    }
+
+    private func transcriptSessionRow(_ session: PhoneTranscriptSession) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.16))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "text.bubble.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.tint)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text(sessionPreview(session))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                HStack(spacing: 6) {
+                    Text(session.date, style: .date)
+                    Text("·")
+                    Text("\(session.lines.count) message\(session.lines.count == 1 ? "" : "s")")
+                }
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            }
+            .padding(.top, 1)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func sessionPreview(_ session: PhoneTranscriptSession) -> String {
+        session.lines.first?.text ?? "No messages yet"
+    }
+
+    // MARK: - Helpers
+
+    private var deletionDialogBinding: Binding<Bool> {
+        Binding(
+            get: { sessionPendingDeletion != nil },
+            set: { if !$0 { sessionPendingDeletion = nil } }
+        )
+    }
+
+    private var deletionDialogTitle: String {
+        if let title = sessionPendingDeletion?.title, !title.isEmpty {
+            return "Delete \"\(title)\"?"
+        }
+        return "Delete this transcript?"
     }
 
     private var transcriptText: String {
@@ -217,43 +354,18 @@ struct PhoneContentView: View {
         .joined(separator: "\n\n---\n\n")
     }
 
-    private func transcriptSessionRow(_ session: PhoneTranscriptSession) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(session.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-
-            Text(sessionPreview(session))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-
-            HStack(spacing: 6) {
-                Text(session.date, style: .date)
-                Text("·")
-                Text("\(session.lines.count) msg")
-            }
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+    private var copiedToast: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+            Text("Copied")
+                .font(.callout.weight(.semibold))
         }
-        .padding(.vertical, 4)
-    }
-
-    private func sessionPreview(_ session: PhoneTranscriptSession) -> String {
-        session.lines.first?.text ?? "No messages yet"
-    }
-
-    private func copyTranscript() {
-        UIPasteboard.general.string = transcriptText
-        didCopyTranscript = true
-
-        Task {
-            try? await Task.sleep(nanoseconds: 1_800_000_000)
-            await MainActor.run {
-                didCopyTranscript = false
-            }
-        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.thinMaterial, in: Capsule())
+        .padding(.bottom, 24)
+        .transition(.scale(scale: 0.9).combined(with: .opacity))
     }
 }
 
@@ -269,19 +381,21 @@ struct PhoneTranscriptDetailView: View {
     }
 
     var body: some View {
-        List {
-            if currentSession.lines.isEmpty {
-                ContentUnavailableView(
-                    "No messages",
-                    systemImage: "text.bubble",
-                    description: Text("This transcript has not captured any messages yet.")
-                )
-            } else {
-                ForEach(currentSession.lines) { line in
-                    transcriptRow(line)
+        ScrollView {
+            LazyVStack(spacing: 6) {
+                if currentSession.lines.isEmpty {
+                    emptyDetailState
+                        .padding(.top, 80)
+                } else {
+                    ForEach(Array(currentSession.lines.enumerated()), id: \.element.id) { index, line in
+                        transcriptBubble(line, isFirstOfSpeaker: isFirstOfSpeaker(at: index))
+                    }
                 }
             }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 12)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(currentSession.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -321,12 +435,17 @@ struct PhoneTranscriptDetailView: View {
         }
         .overlay(alignment: .bottom) {
             if didCopyTranscript {
-                Text("Copied")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.thinMaterial, in: Capsule())
-                    .padding(.bottom, 20)
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("Copied")
+                        .font(.callout.weight(.semibold))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.thinMaterial, in: Capsule())
+                .padding(.bottom, 20)
+                .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
         }
         .onChange(of: didCopyTranscript) { _, didCopy in
@@ -340,6 +459,33 @@ struct PhoneTranscriptDetailView: View {
         }
     }
 
+    private func isFirstOfSpeaker(at index: Int) -> Bool {
+        guard index > 0 else { return true }
+        return currentSession.lines[index].speaker != currentSession.lines[index - 1].speaker
+    }
+
+    private var emptyDetailState: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.14))
+                    .frame(width: 84, height: 84)
+                Image(systemName: "text.bubble")
+                    .font(.system(size: 32, weight: .regular))
+                    .foregroundStyle(.tint)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            Text("No messages yet")
+                .font(.headline)
+            Text("This transcript hasn't captured any messages.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+    }
+
     private var transcriptText: String {
         currentSession.lines.map { line in
             let speaker = line.speaker == .user ? "You" : "WatchGPT"
@@ -348,36 +494,70 @@ struct PhoneTranscriptDetailView: View {
         .joined(separator: "\n\n")
     }
 
-    private func transcriptRow(_ line: PhoneTranscriptLine) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(line.speaker == .user ? "You" : "WatchGPT")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(line.speaker == .user ? .blue : .green)
+    private func transcriptBubble(_ line: PhoneTranscriptLine, isFirstOfSpeaker: Bool) -> some View {
+        let isUser = line.speaker == .user
 
-                Spacer()
+        return HStack(alignment: .bottom, spacing: 0) {
+            if isUser {
+                Spacer(minLength: 56)
+            }
+
+            VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
+                if isFirstOfSpeaker {
+                    Text(isUser ? "You" : "WatchGPT")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 4)
+                }
+
+                Text(line.text)
+                    .font(.body)
+                    .foregroundStyle(isUser ? Color.white : Color.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(
+                        bubbleFill(isUser: isUser),
+                        in: bubbleShape(isUser: isUser)
+                    )
+                    .textSelection(.enabled)
 
                 Text(line.date, style: .time)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 4)
+            }
+            .contextMenu {
+                Button {
+                    UIPasteboard.general.string = line.text
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                ShareLink(item: line.text) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
             }
 
-            Text(line.text)
-                .font(.body)
-                .textSelection(.enabled)
-        }
-        .padding(.vertical, 4)
-        .contextMenu {
-            Button {
-                UIPasteboard.general.string = line.text
-            } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+            if !isUser {
+                Spacer(minLength: 56)
             }
+        }
+        .padding(.top, isFirstOfSpeaker ? 8 : 0)
+    }
 
-            ShareLink(item: line.text) {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-        }
+    private func bubbleFill(isUser: Bool) -> Color {
+        isUser ? .accentColor : Color(.secondarySystemGroupedBackground)
+    }
+
+    private func bubbleShape(isUser: Bool) -> some Shape {
+        UnevenRoundedRectangle(
+            cornerRadii: .init(
+                topLeading: 18,
+                bottomLeading: isUser ? 18 : 4,
+                bottomTrailing: isUser ? 4 : 18,
+                topTrailing: 18
+            ),
+            style: .continuous
+        )
     }
 }
 

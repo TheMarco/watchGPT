@@ -52,15 +52,10 @@ struct ContentView: View {
 
     private var topBar: some View {
         HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("WatchGPT")
-                    .font(.system(.caption2, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.secondary)
-
-                Text("Voice")
-                    .font(.system(.title3, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
+            Text("WatchGPT")
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .foregroundStyle(.primary)
+                .opacity(0.92)
 
             Spacer(minLength: 8)
 
@@ -179,9 +174,13 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "stop.fill")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.red)
                         .frame(width: 38, height: 38)
-                        .background(.red.opacity(0.55), in: Circle())
+                        .background(.thinMaterial, in: Circle())
+                        .overlay {
+                            Circle()
+                                .strokeBorder(.red.opacity(0.30), lineWidth: 0.5)
+                        }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("End session")
@@ -224,15 +223,24 @@ struct ContentView: View {
     }
 
     private var background: some View {
-        ZStack {
+        let normalizedPeak = Double(min(1.0, session.lastInputPeak * 2.5))
+        let baseHaloOpacity = session.isConnected ? 0.30 : 0.18
+        let haloOpacity = baseHaloOpacity + normalizedPeak * 0.22
+        let haloScale = 1.0 + normalizedPeak * 0.34
+        let haloBlur = 30 + normalizedPeak * 8
+
+        return ZStack {
             Color.black
                 .ignoresSafeArea()
 
             Circle()
-                .fill(statusGradient.opacity(session.isConnected ? 0.30 : 0.18))
+                .fill(statusGradient.opacity(haloOpacity))
                 .frame(width: 150, height: 150)
-                .blur(radius: 30)
+                .scaleEffect(haloScale)
+                .blur(radius: haloBlur)
                 .offset(y: -48)
+                .animation(.smooth(duration: 0.18), value: session.lastInputPeak)
+                .animation(.smooth(duration: 0.30), value: session.isConnected)
 
             LinearGradient(
                 colors: [

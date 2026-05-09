@@ -3,6 +3,94 @@ import Foundation
 import UIKit
 import WatchConnectivity
 
+struct WebSearchResult: Sendable {
+    let title: String
+    let url: String
+    let snippet: String
+    let source: String?
+    let publishedAge: String?
+}
+
+enum WebSearchError: LocalizedError {
+    case missingAPIKey
+    case http(Int, String)
+    case decode
+    case timeout
+
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey: return "Search provider API key is not configured."
+        case .http(let code, let body):
+            let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "Search HTTP \(code)\(trimmed.isEmpty ? "" : ": \(trimmed.prefix(180))")"
+        case .decode: return "Search response could not be decoded."
+        case .timeout: return "Search timed out."
+        }
+    }
+}
+
+protocol WebSearchProvider: Sendable {
+    func search(query: String, maxResults: Int) async throws -> [WebSearchResult]
+}
+
+final class BraveSearchProvider: WebSearchProvider, @unchecked Sendable {
+    private let apiKey: String
+    private let session: URLSession
+
+    init(apiKey: String, session: URLSession) {
+        self.apiKey = apiKey
+        self.session = session
+    }
+
+    func search(query: String, maxResults: Int) async throws -> [WebSearchResult] {
+        guard !apiKey.isEmpty else { throw WebSearchError.missingAPIKey }
+
+        var components = URLComponents(string: "https://api.search.brave.com/res/v1/web/search")!
+        components.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "count", value: String(min(maxResults, 10))),
+            URLQueryItem(name: "freshness", value: "pw")
+        ]
+
+        guard let url = components.url else { throw WebSearchError.decode }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("gzip", forHTTPHeaderField: "Accept-Encoding")
+        request.setValue(apiKey, forHTTPHeaderField: "X-Subscription-Token")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw WebSearchError.http(0, "no http response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw WebSearchError.http(http.statusCode, body)
+        }
+
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let web = json["web"] as? [String: Any],
+            let rawResults = web["results"] as? [[String: Any]]
+        else {
+            throw WebSearchError.decode
+        }
+
+        return rawResults.prefix(maxResults).compactMap { raw -> WebSearchResult? in
+            guard let url = raw["url"] as? String, !url.isEmpty else { return nil }
+            return WebSearchResult(
+                title: (raw["title"] as? String) ?? "Untitled",
+                url: url,
+                snippet: (raw["description"] as? String) ?? "",
+                source: (raw["profile"] as? [String: Any])?["name"] as? String,
+                publishedAge: raw["age"] as? String
+            )
+        }
+    }
+}
+
 struct PhoneTranscriptLine: Identifiable, Codable, Equatable {
     enum Speaker: String, Codable {
         case user
@@ -68,8 +156,10 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     private let pendingAssistantFlushBytes = 9_600
     private var lastSentVoice = ""
     private var lastSentLanguage: AssistantLanguage = .auto
+    private var lastSentWebSearchEnabled = false
     private var automaticTurnDetectionEnabled = true
     private var activeVoiceEngine: VoiceEngine = .realtime
+    private let webSearchTimeout: TimeInterval = 8
     private var regularAudioBuffer = Data()
     private var regularPreSpeechBuffer = Data()
     private var regularSilentBytes = 0
@@ -266,6 +356,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         pendingAssistantAudio = Data()
         lastSentVoice = ""
         lastSentLanguage = .auto
+        lastSentWebSearchEnabled = false
         regularTurnTask?.cancel()
         regularTurnTask = nil
         regularAudioBuffer = Data()
@@ -311,6 +402,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         pendingAssistantAudio = Data()
         lastSentVoice = ""
         lastSentLanguage = .auto
+        lastSentWebSearchEnabled = false
 
         guard isActive else { return }
 
@@ -414,8 +506,152 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
                 sendOpenAIEvent(["type": "input_audio_buffer.clear"])
             }
             sendToWatch(.responseDone)
+        case "response.output_item.done":
+            if let item = event["item"] as? [String: Any] {
+                handleOutputItem(item)
+            }
         default:
             break
+        }
+    }
+
+    private func handleOutputItem(_ item: [String: Any]) {
+        guard
+            (item["type"] as? String) == "function_call",
+            (item["name"] as? String) == "web_search",
+            let callId = item["call_id"] as? String,
+            let argumentsJSON = item["arguments"] as? String
+        else {
+            return
+        }
+
+        Task { [weak self] in
+            await self?.runWebSearchCall(callId: callId, argumentsJSON: argumentsJSON)
+        }
+    }
+
+    private func runWebSearchCall(callId: String, argumentsJSON: String) async {
+        let parsedQuery: String
+        if let argsData = argumentsJSON.data(using: .utf8),
+           let parsed = try? JSONSerialization.jsonObject(with: argsData) as? [String: Any],
+           let q = (parsed["query"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !q.isEmpty
+        {
+            parsedQuery = q
+        } else {
+            await sendWebSearchOutput(
+                callId: callId,
+                payload: webSearchErrorPayload(query: "", message: "Missing or invalid query.")
+            )
+            return
+        }
+
+        let key = PhoneConfiguration.braveSearchAPIKey
+        guard !key.isEmpty else {
+            await sendWebSearchOutput(
+                callId: callId,
+                payload: webSearchErrorPayload(
+                    query: parsedQuery,
+                    message: "Search provider not configured. Add a Brave Search API key in iPhone Settings."
+                )
+            )
+            return
+        }
+
+        let provider = BraveSearchProvider(apiKey: key, session: urlSession)
+
+        await MainActor.run {
+            statusText = "Searching"
+        }
+
+        do {
+            let results = try await Self.withTimeout(seconds: webSearchTimeout) {
+                try await provider.search(query: parsedQuery, maxResults: 5)
+            }
+            await sendWebSearchOutput(
+                callId: callId,
+                payload: webSearchSuccessPayload(query: parsedQuery, results: results)
+            )
+        } catch {
+            await sendWebSearchOutput(
+                callId: callId,
+                payload: webSearchErrorPayload(
+                    query: parsedQuery,
+                    message: error.localizedDescription
+                )
+            )
+        }
+    }
+
+    private func sendWebSearchOutput(callId: String, payload: [String: Any]) async {
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: payload),
+            let jsonString = String(data: data, encoding: .utf8)
+        else {
+            return
+        }
+
+        await MainActor.run {
+            sendOpenAIEvent([
+                "type": "conversation.item.create",
+                "item": [
+                    "type": "function_call_output",
+                    "call_id": callId,
+                    "output": jsonString
+                ]
+            ])
+            sendOpenAIEvent(["type": "response.create"])
+            statusText = "Live"
+        }
+    }
+
+    private func webSearchSuccessPayload(query: String, results: [WebSearchResult]) -> [String: Any] {
+        let formatter = ISO8601DateFormatter()
+        let mapped = results.map { r -> [String: Any] in
+            var dict: [String: Any] = [
+                "title": r.title,
+                "url": r.url,
+                "snippet": r.snippet
+            ]
+            if let source = r.source { dict["source"] = source }
+            if let age = r.publishedAge { dict["publishedAge"] = age }
+            return dict
+        }
+        return [
+            "query": query,
+            "searchedAt": formatter.string(from: Date()),
+            "results": mapped
+        ]
+    }
+
+    private func webSearchErrorPayload(query: String, message: String) -> [String: Any] {
+        let formatter = ISO8601DateFormatter()
+        return [
+            "error": true,
+            "query": query,
+            "message": message,
+            "searchedAt": formatter.string(from: Date()),
+            "results": [Any]()
+        ]
+    }
+
+    private static func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        _ work: @Sendable @escaping () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await work()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw WebSearchError.timeout
+            }
+            guard let value = try await group.next() else {
+                throw WebSearchError.timeout
+            }
+            group.cancelAll()
+            return value
         }
     }
 
@@ -451,20 +687,35 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             transcriptionConfig["language"] = iso
         }
 
+        let webSearchEnabled = PhoneConfiguration.realtimeWebSearchEnabled
+        let instructions = webSearchEnabled
+            ? PhoneConfiguration.effectiveInstructions + " " + Self.realtimeWebSearchInstructions
+            : PhoneConfiguration.effectiveInstructions
+
+        var session: [String: Any] = [
+            "instructions": instructions,
+            "modalities": ["text", "audio"],
+            "voice": voice,
+            "input_audio_format": "pcm16",
+            "output_audio_format": "pcm16",
+            "input_audio_transcription": transcriptionConfig,
+            "turn_detection": turnDetection
+        ]
+
+        if webSearchEnabled {
+            session["tools"] = [Self.webSearchToolSpec]
+            session["tool_choice"] = "auto"
+        } else {
+            session["tools"] = []
+        }
+
         sendOpenAIEvent([
             "type": "session.update",
-            "session": [
-                "instructions": PhoneConfiguration.effectiveInstructions,
-                "modalities": ["text", "audio"],
-                "voice": voice,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": transcriptionConfig,
-                "turn_detection": turnDetection
-            ]
+            "session": session
         ])
         lastSentVoice = voice
         lastSentLanguage = PhoneConfiguration.assistantLanguage
+        lastSentWebSearchEnabled = webSearchEnabled
     }
 
     private func applyVoiceChangeIfNeeded() {
@@ -473,11 +724,36 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         }
         let voiceChanged = PhoneConfiguration.realtimeVoice != lastSentVoice
         let languageChanged = PhoneConfiguration.assistantLanguage != lastSentLanguage
-        guard voiceChanged || languageChanged else {
+        let webSearchChanged = PhoneConfiguration.realtimeWebSearchEnabled != lastSentWebSearchEnabled
+        guard voiceChanged || languageChanged || webSearchChanged else {
             return
         }
         sendSessionUpdate()
     }
+
+    private static let webSearchToolSpec: [String: Any] = [
+        "type": "function",
+        "name": "web_search",
+        "description": "Search the web for current, recent, time-sensitive, or source-backed information. Use this for news, latest or current information, product rumors, prices, availability, release dates, laws, regulations, sports, weather, software or library versions, company or person status, or whenever the user explicitly says to search or look something up.",
+        "parameters": [
+            "type": "object",
+            "properties": [
+                "query": [
+                    "type": "string",
+                    "description": "The web search query. Include the user's important terms and enough context to retrieve fresh, relevant results."
+                ],
+                "reason": [
+                    "type": "string",
+                    "description": "Brief reason web search is needed (latest news, current price, recent rumor, explicit user request)."
+                ]
+            ],
+            "required": ["query"]
+        ]
+    ]
+
+    private static let realtimeWebSearchInstructions = """
+    You have access to a function tool named web_search. Call it before answering when the user explicitly asks you to search, look up, or check online; or when they ask for latest, current, recent, breaking, today's, this week's, newly released, rumored, or otherwise time-sensitive information; or when accuracy depends on something that may have changed since your training. Skip it for timeless or general knowledge, brainstorming, writing help, or coding help that does not require current docs. Use a concise specific query that preserves the user's exact terms; include the current year when useful. Before a search that may take a moment, give a brief preamble like "Let me check." After the result returns, answer naturally and mention source names or dates only when they actually appear in the results. Never invent citations, URLs, dates, prices, or claims that are not in the search output.
+    """
 
     private func sendOpenAIEvent(_ event: [String: Any]) {
         guard let webSocket,

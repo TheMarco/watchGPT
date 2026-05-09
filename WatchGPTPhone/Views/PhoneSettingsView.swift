@@ -4,6 +4,7 @@ struct PhoneSettingsView: View {
     @AppStorage(PhoneConfiguration.openAIAPIKeyKey) private var apiKey = PhoneConfiguration.defaultOpenAIAPIKey
     @AppStorage(PhoneConfiguration.realtimeVoiceKey) private var voice = PhoneConfiguration.defaultRealtimeVoice
     @AppStorage(PhoneConfiguration.assistantLanguageKey) private var language = AssistantLanguage.auto.rawValue
+    @AppStorage(PhoneConfiguration.braveSearchAPIKeyKey) private var braveSearchKey = PhoneConfiguration.defaultBraveSearchAPIKey
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -48,6 +49,17 @@ struct PhoneSettingsView: View {
                 Text("Assistant language")
             } footer: {
                 Text("Auto matches whatever language you speak. Pick a specific language to lock the assistant to it. Applied immediately if a session is live.")
+            }
+
+            Section {
+                SecureField("Brave Search API key (optional)", text: $braveSearchKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.system(.body, design: .monospaced))
+            } header: {
+                Text("Web search (Realtime)")
+            } footer: {
+                Text("When set, Realtime mode can search the web during a conversation. Get a free key at api.search.brave.com. Leave blank to disable web search in Realtime mode. Think Mode uses OpenAI's built-in search and does not need this key.")
             }
         }
         .navigationTitle("Settings")

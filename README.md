@@ -156,7 +156,7 @@ Built by **Marco van Hylckama Vlieg**.
 - <https://ai-created.com/>
 - Follow on X: <https://x.com/AIandDesign>
 
-If you find this useful, a follow on X is a kind way to say thanks.
+If you find this useful, a follow on X is a kind way to say thanks. Buying me a coffee is also lovely: <https://ko-fi.com/aianddesign>.
 
 ## License
 

@@ -59,6 +59,8 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     private var automaticConversationEnabledForSession = true
     private var voiceEngineForSession: VoiceEngine = .realtime
     private let responseTimeout: TimeInterval = 12
+    private var lastActivityAt = Date()
+    private let idleTimeoutSeconds: TimeInterval = 30
 
     override init() {
         wcSession = WCSession.isSupported() ? WCSession.default : nil
@@ -130,8 +132,13 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
                 default: true
             )
         )
+        lastActivityAt = Date()
         startWatchdog()
         sendStartToPhone()
+    }
+
+    private func noteActivity() {
+        lastActivityAt = Date()
     }
 
     func stop() {
@@ -174,6 +181,8 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
 
     func beginTurn() {
+        noteActivity()
+
         if isAutomaticConversationEnabled {
             recoverToConnected()
             phase = .listening
@@ -233,6 +242,13 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             errorMessage = "No reply from iPhone. The realtime session may have dropped — tap stop, then start to reconnect."
         }
 
+        if phase == .listening || phase == .connected {
+            if Date().timeIntervalSince(lastActivityAt) > idleTimeoutSeconds {
+                stop()
+                return
+            }
+        }
+
         switch phase {
         case .speaking:
             if Date() >= playbackEndsAt && elapsed > 6 {
@@ -260,6 +276,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         guard phase == .listening else {
             return
         }
+        noteActivity()
         phase = .connected
         awaitingResponseSince = Date()
 
@@ -292,6 +309,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             }
         case .speechStarted:
             awaitingResponseSince = nil
+            noteActivity()
             if isAutomaticConversationEnabled {
                 if isInPlaybackEchoWindow() {
                     return
@@ -301,27 +319,31 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
                 phase = .listening
             }
         case .speechStopped:
-            break
+            noteActivity()
         case .userTranscript:
             awaitingResponseSince = nil
+            noteActivity()
             if let text = message[RealtimeMessageKey.text] as? String {
                 latestUserTranscript = text
                 appendLine(.user, text)
             }
         case .assistantTranscriptDelta:
             awaitingResponseSince = nil
+            noteActivity()
             if let delta = message[RealtimeMessageKey.text] as? String {
                 assistantDraft += delta
                 latestAssistantTranscript = assistantDraft
             }
         case .assistantTranscriptFinal:
             awaitingResponseSince = nil
+            noteActivity()
             let final = (message[RealtimeMessageKey.text] as? String) ?? assistantDraft
             latestAssistantTranscript = final
             appendLine(.assistant, final)
             assistantDraft = ""
         case .responseDone:
             awaitingResponseSince = nil
+            noteActivity()
             if hasStartedAudio, Date() >= playbackEndsAt {
                 phase = isAutomaticConversationEnabled ? .listening : .connected
             }

@@ -446,6 +446,11 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             ]
             : NSNull()
 
+        var transcriptionConfig: [String: Any] = ["model": "gpt-4o-mini-transcribe"]
+        if let iso = PhoneConfiguration.assistantLanguage.iso639Code {
+            transcriptionConfig["language"] = iso
+        }
+
         sendOpenAIEvent([
             "type": "session.update",
             "session": [
@@ -454,9 +459,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
                 "voice": voice,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
-                "input_audio_transcription": [
-                    "model": "gpt-4o-mini-transcribe"
-                ],
+                "input_audio_transcription": transcriptionConfig,
                 "turn_detection": turnDetection
             ]
         ])
@@ -868,6 +871,9 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
 
         var body = Data()
         body.appendMultipartField(name: "model", value: PhoneConfiguration.transcriptionModel, boundary: boundary)
+        if let iso = PhoneConfiguration.assistantLanguage.iso639Code {
+            body.appendMultipartField(name: "language", value: iso, boundary: boundary)
+        }
         body.appendMultipartFile(
             name: "file",
             filename: "watchgpt.wav",

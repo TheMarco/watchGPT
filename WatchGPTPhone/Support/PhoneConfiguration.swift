@@ -85,6 +85,49 @@ enum AssistantLanguage: String, CaseIterable, Identifiable {
         }
     }
 
+    var iso639Code: String? {
+        switch self {
+        case .auto: return nil
+        case .arabic: return "ar"
+        case .bulgarian: return "bg"
+        case .catalan: return "ca"
+        case .chinese: return "zh"
+        case .croatian: return "hr"
+        case .czech: return "cs"
+        case .danish: return "da"
+        case .dutch: return "nl"
+        case .english: return "en"
+        case .estonian: return "et"
+        case .finnish: return "fi"
+        case .french: return "fr"
+        case .german: return "de"
+        case .greek: return "el"
+        case .hebrew: return "he"
+        case .hindi: return "hi"
+        case .hungarian: return "hu"
+        case .indonesian: return "id"
+        case .italian: return "it"
+        case .japanese: return "ja"
+        case .korean: return "ko"
+        case .latvian: return "lv"
+        case .lithuanian: return "lt"
+        case .malay: return "ms"
+        case .norwegian: return "no"
+        case .polish: return "pl"
+        case .portuguese: return "pt"
+        case .romanian: return "ro"
+        case .russian: return "ru"
+        case .slovak: return "sk"
+        case .slovenian: return "sl"
+        case .spanish: return "es"
+        case .swedish: return "sv"
+        case .thai: return "th"
+        case .turkish: return "tr"
+        case .ukrainian: return "uk"
+        case .vietnamese: return "vi"
+        }
+    }
+
     var promptName: String? {
         switch self {
         case .auto: return nil

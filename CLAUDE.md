@@ -21,16 +21,16 @@ Repo: https://github.com/TheMarco/watchGPT.
 - **Assistant language** picker on the iPhone (`AssistantLanguage`, 38 languages plus Auto). When set, it appends `"Always respond in <Language>…"` to the session prompt and pins the transcription model via `language: "<iso>"` in `input_audio_transcription` (and as the `language` form field on the Think Mode `/v1/audio/transcriptions` upload). Auto strengthens the prompt to fall back to English on any uncertainty.
 - **Idle auto-end**: 30 s of `.listening`/`.connected` with no activity triggers `stop()`. The clock resets on every meaningful event (`speechStarted/Stopped`, transcripts, `responseDone`) and — critically — whenever `phase` transitions OUT of `.speaking`, so long monologues don't pre-stale the timer.
 - **Audio prewarm**: `RealtimeAudioIO.prepare()` (idempotent) wires the audio graph and configures the session category on `ContentView.onAppear`, so first-tap latency drops; `start()` only does the work that needs HAL active + mic permission.
-- **AOD-neutral orb**: when `@Environment(\.isLuminanceReduced)` is true, the orb switches to a grayscale gradient and a neutral `waveform` glyph; the audio-reactive halo behind the orb is muted. Lifting the wrist clears it via the existing `scenePhase`-driven resync.
-- **Audio-reactive halo**: `RealtimeVoiceSession.lastInputPeak` is published per mic chunk and feeds the radial blur behind the orb (scale, opacity, blur radius all respond).
-- **Cohesive visual system**: the watch uses a rounded-square phase orb, branded gradient tile, iPhone reachability pill, premium transcript container, and matching chat bubbles. The iPhone companion uses the app icon in the hero/About header, layered gradient cards, visible Help/About shortcuts, and a colorful card-based Help screen.
+- **AOD-neutral main button**: when `@Environment(\.isLuminanceReduced)` is true, the button switches to a grayscale gradient and a neutral `waveform` glyph; the audio-reactive halo behind it is muted. Lifting the wrist clears it via the existing `scenePhase`-driven resync.
+- **Audio-reactive halo**: `RealtimeVoiceSession.lastInputPeak` is published per mic chunk and feeds the radial blur behind the main button (scale, opacity, blur radius all respond).
+- **Cohesive visual system**: the watch uses a rounded-square phase button, round watch artwork in idle/ready states, iPhone reachability pill, premium transcript container, and matching chat bubbles. The iPhone companion uses transparent brand artwork in the hero/About header, layered gradient cards, visible Help/About shortcuts, and a colorful card-based Help screen.
 - Haptics were intentionally removed from the watch voice session — destabilizing.
 - The phone companion stores chat transcripts as separate sessions with generated titles, one-sentence summaries, and usage metadata. The detail view is iMessage-style chat bubbles. Native swipe-to-delete with no confirmation; the trash icon inside the detail view confirms before deleting.
 - The phone companion has a collapsible diagnostics panel on the main screen. It starts closed and expands to show mode, Fast Mode turn-taking, last OpenAI event, reconnects, mic peak, and watch chunks.
 - Help/About are available both from the main companion screen and Settings. `PhoneHelpView` and `PhoneAboutView` are shared top-level views rather than private to Settings.
-- `icon.png` at the repo root is the source image for both app icons:
-  - watch target uses `AppIcon`
-  - phone target uses `PhoneAppIcon`
+- Root icon sources:
+  - `icon.png` is the phone/general brand artwork source and feeds `PhoneAppIcon` plus the in-app `BrandIcon` image set.
+  - `icon-watch.png` is the round watch artwork source and feeds `AppIcon` plus the in-app `WatchBrandIcon` image set.
 
 ## Why Two Targets
 
@@ -40,13 +40,13 @@ The iPhone companion sidesteps that by holding the OpenAI connection and relayin
 
 ## UX
 
-The watch shows a large rounded-square orb.
+The watch shows a large rounded-square main voice button.
 
-- From disconnected: tap the orb to start a session.
+- From disconnected: tap the main button to start a session.
 - In hands-free mode: speak naturally after startup.
-- In push-to-talk mode: hold the orb to talk, release to commit.
+- In push-to-talk mode: hold the main button to talk, release to commit.
 - Tap-to-interrupt during `.speaking` always works (it routes through `beginTurn` → `recoverToConnected`, clearing the playback echo guard and `awaitingAssistantResponse`).
-- The watch top bar shows a small branded gradient tile, an iPhone reachability pill, and the Settings button.
+- The watch top bar shows the title, an iPhone reachability pill, and the Settings button.
 - Settings on the watch cover interaction/runtime: hands-free, audio replies, mic sensitivity, voice barge-in, workout keep-alive, and clear chat. Model-facing choices live on the iPhone: default mode, per-mode voice, Fast Mode VAD eagerness, Think Mode reasoning, language, and search keys.
 
 Watch phase machine:
@@ -62,7 +62,7 @@ disconnected -> connecting -> connected <-> listening
 
 - `WatchGPT/` - watchOS target, Swift 5, deployment target 11.0
   - `WatchGPTApp.swift` - app entry, registers defaults.
-  - `Views/ContentView.swift` - rounded-square orb UI (TimelineView-driven, AOD-aware, audio-reactive halo/ripples), reachability/status top bar, transcript view, stop/settings controls.
+  - `Views/ContentView.swift` - rounded-square main button UI (TimelineView-driven, AOD-aware, audio-reactive halo/ripples, `WatchBrandIcon` in idle/ready states), reachability/status top bar, transcript view, stop/settings controls.
   - `Views/RealtimeTranscriptBubble.swift` - watch transcript bubble styling shared by live/final transcript lines.
   - `Views/SettingsView.swift` - hands-free, audio replies, mic sensitivity, voice barge-in, workout keep-alive, clear chat.
   - `Services/RealtimeVoiceSession.swift` - watch-side phase machine and `WCSession` client. Owns the idle watchdog, the playback-echo guard, the `awaitingAssistantResponse` flag, and `lastInputPeak` for the halo.
@@ -70,7 +70,8 @@ disconnected -> connecting -> connected <-> listening
   - `Support/AppConfiguration.swift` - watch settings keys/defaults plus the `MicSensitivity` enum. No API key on watch.
   - `Info.plist` - mic usage, HealthKit usage, `WKBackgroundModes` for audio and workout processing.
   - `WatchGPT.entitlements` - HealthKit entitlement.
-  - `Assets.xcassets/AppIcon.appiconset` - watch icon renditions generated from root `icon.png`.
+  - `Assets.xcassets/AppIcon.appiconset` - watch icon renditions generated from root `icon-watch.png`.
+  - `Assets.xcassets/WatchBrandIcon.imageset` - in-app watch artwork copied from root `icon-watch.png`.
 - `WatchGPTPhone/` - iOS companion target, Swift 5, deployment target 17.0
   - `WatchGPTPhoneApp.swift` - app entry, activates `PhoneRealtimeBridge`.
   - `Views/PhoneContentView.swift` - app-icon hero status card with TimelineView pulse, Help/About shortcuts, collapsible diagnostics panel, transcript list (insetGrouped, leading badges), iMessage-style chat-bubble detail view with usage metadata, and shared `PhoneAppIconImage`.
@@ -80,6 +81,7 @@ disconnected -> connecting -> connected <-> listening
   - `Config/WatchGPTPhone.xcconfig` - committed; includes gitignored `LocalSecrets.xcconfig`.
 - `Shared/RealtimeMessages.swift` - compact message envelope shared by both targets, plus the `VoiceEngine` enum (raw values `realtime`/`gpt5`, displayNames Fast Mode/Think Mode).
 - `WatchGPT/Assets.xcassets/PhoneAppIcon.appiconset` - phone icon renditions generated from root `icon.png`.
+- `WatchGPT/Assets.xcassets/BrandIcon.imageset` - in-app phone/general brand artwork copied from root `icon.png`.
 - `project.yml` - XcodeGen spec. Regenerate after structural target/file changes.
 
 ## Engine Details
@@ -264,7 +266,7 @@ Note: full `xcodebuild` may fail in this local environment because CoreSimulator
 - Think Mode has been twitchy on-device. The current mitigation is local VAD debounce plus short-burst dropping, but it still needs real watch testing.
 - Think Mode "never speaks back" was likely caused by sending synthesized speech as one huge `sendMessageData` payload. It is now chunked/paced, but verify on device.
 - Fast Mode is still the smoother path. Think Mode is turn-based and will never feel as immediate as `gpt-realtime`, especially with web search adding another round-trip.
-- The watch screen can still dim. Workout runtime helps process lifetime; the AOD-aware orb makes the dim state look intentional rather than broken.
+- The watch screen can still dim. Workout runtime helps process lifetime; the AOD-aware main button makes the dim state look intentional rather than broken.
 - If OpenAI rejects `gpt-5.5`, the user may not have API access to that model. The phone bridge should surface the API error.
 - Background pickup is limited. If the iPhone app is force-quit, the watch cannot revive it.
 - Reconnect during an in-flight turn can lose buffered audio. The UX should eventually surface "connection dropped, try again" more explicitly.

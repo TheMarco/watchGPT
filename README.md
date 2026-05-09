@@ -1,6 +1,6 @@
 # WatchGPT
 
-Realtime ChatGPT voice for Apple Watch. Tap the orb, talk, hear the answer streamed back through the watch speaker. Two modes: **Fast Mode** (OpenAI's `gpt-realtime` for true streaming speech-to-speech) and **Think Mode** (a turn-based `gpt-5.5` pipeline for cases where you want the smarter, slower reasoning model).
+Realtime ChatGPT voice for Apple Watch. Tap the main button, talk, hear the answer streamed back through the watch speaker. Two modes: **Fast Mode** (OpenAI's `gpt-realtime` for true streaming speech-to-speech) and **Think Mode** (a turn-based `gpt-5.5` pipeline for cases where you want the smarter, slower reasoning model).
 
 This is a **personal sideloading project**. There is no App Store build and there will not be one. You bring your own OpenAI API key, you build it yourself, you run it on your own watch.
 
@@ -15,7 +15,7 @@ Apple Watch  ──WatchConnectivity──  iPhone  ──wss──  OpenAI
 
 Two targets:
 
-- **WatchGPT** (watchOS) — captures 24 kHz PCM from the mic, plays back streamed PCM, shows the orb / transcript UI.
+- **WatchGPT** (watchOS) — captures 24 kHz PCM from the mic, plays back streamed PCM, shows the main voice button / transcript UI.
 - **WatchGPTPhone** (iOS) — holds the OpenAI WebSocket (or runs the Think Mode turn pipeline), persists transcripts, and relays audio over Bluetooth.
 
 The watch cannot reliably open arbitrary outbound WebSockets on its own. That's a watchOS networking limitation, tested at length — `URLSessionWebSocketTask`, `URLSession+waitsForConnectivity`, and `NWConnection+NWProtocolWebSocket` all fail in different ways even when HTTPS data tasks succeed. The iPhone companion exists to sidestep this. **Both apps must be running and reachable** for a session.
@@ -29,8 +29,8 @@ The watch cannot reliably open arbitrary outbound WebSockets on its own. That's 
 - **Voice barge-in toggle.** Off by default — half-duplex with tap-to-interrupt for quieter, less-echoey conversations. Flip it on if you want to interrupt the assistant by talking.
 - **38 languages.** Lock the assistant (and the transcription model) to a specific language, or leave it on Auto.
 - **Mic sensitivity preset** — High / Standard / Low for noisy rooms.
-- **Premium watch UI.** Rounded-square orb, phase-colored glow, iPhone reachability pill, polished transcript bubbles, and audio-reactive halo.
-- **AOD-aware.** When the watch enters always-on dim mode, the orb switches to a calm grayscale look so phase colors don't go stale.
+- **Premium watch UI.** Rounded-square voice button, round watch artwork, phase-colored glow, iPhone reachability pill, polished transcript bubbles, and audio-reactive halo.
+- **AOD-aware.** When the watch enters always-on dim mode, the main button switches to a calm grayscale look so phase colors don't go stale.
 - **Transcript history** on the iPhone — every session is saved with generated title/summary, usage metadata, copy/share/delete actions, native swipe-to-delete, and iMessage-style chat-bubble detail view.
 - **Companion diagnostics** — collapsible live panel with mode, turn-taking, last OpenAI event, reconnects, mic peak, and watch chunk counts.
 - **Built-in Help and About** — colorful in-app guide, creator links, privacy notes, and license information.
@@ -103,7 +103,7 @@ If you change bundle IDs, also update `WKCompanionAppBundleIdentifier` in `Watch
 ### 6. First-run permissions
 
 - **iPhone**: leave the WatchGPT app open in the foreground the first time so it can activate `WCSession`.
-- **Watch**: tap the orb. iOS will ask for microphone access. Allow it.
+- **Watch**: tap the main button. iOS will ask for microphone access. Allow it.
 - **HealthKit / workout**: see [why it asks](#why-the-watch-asks-for-workout-access) below.
 
 If everything is wired up correctly, the watch shows "Connecting…" briefly and then "Listening". Talk.
@@ -112,7 +112,7 @@ If everything is wired up correctly, the watch shows "Connecting…" briefly and
 
 On the **watch**, hit the gear icon:
 
-- **Hands-free conversation** — On = talk naturally; off = push and hold the orb to speak.
+- **Hands-free conversation** — On = talk naturally; off = push and hold the main button to speak.
 - **Audio replies** — Off mutes the speaker (text-only).
 - **Mic sensitivity** — High (quiet rooms), Standard (default), Low (noisy rooms — TV, kids).
 - **Voice barge-in** — Off (default) gives clean half-duplex with tap-to-interrupt. On lets you interrupt by talking.
@@ -157,7 +157,7 @@ The most effective workaround Apple actually permits is starting a `HKWorkoutSes
 
 These are the rough edges. They're known, they have plausible causes, and pull requests are welcome.
 
-- **Watch screen dims, audio keeps going.** When you drop your wrist on a Series 5 or later, the watch enters its always-on dim treatment for the app — screen visibly dimmed but the session keeps running thanks to `HKWorkoutSession`. The orb switches to a neutral grayscale look in this state so stale phase colors don't mislead. Lifting your wrist clears it instantly. Series 4 and earlier have no AOD; nothing software-side can change that.
+- **Watch screen dims, audio keeps going.** When you drop your wrist on a Series 5 or later, the watch enters its always-on dim treatment for the app — screen visibly dimmed but the session keeps running thanks to `HKWorkoutSession`. The main button switches to a neutral grayscale look in this state so stale phase colors don't mislead. Lifting your wrist clears it instantly. Series 4 and earlier have no AOD; nothing software-side can change that.
 - **First message is slower than later messages.** OpenAI's first response has no KV cache for your instructions, and a 1.25 s mic-suppression window lets the AEC (acoustic echo canceller) converge before the model can hear its own speaker output. Result: turn 1 is laggy; turns 2+ are smooth.
 - **Think Mode is noticeably slower than Fast Mode.** Sequential pipeline (listen → transcribe → reason → synthesize → speak), plus an extra hop when web search runs. Expect multi-second latency per turn. It exists for cases where the smarter model matters more than feel.
 - **Echo bleed in echoey rooms.** Even with AEC + the suppression window, hard surfaces and tiny watch speakers can still produce enough self-pickup that Fast Mode interrupts itself a few seconds in. The default of barge-in **off** mostly solves this; AirPods solve it completely (no acoustic loop at all).

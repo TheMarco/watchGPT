@@ -46,7 +46,7 @@ final class RealtimeAudioIO {
     private var interruptionObserver: NSObjectProtocol?
 
     // Wires the graph and sets the session category without activating it,
-    // so the cold-start cost on first orb tap is paid up front.
+    // so the cold-start cost on first main-button tap is paid up front.
     func prepare() {
         if isPrepared || isStarted {
             return

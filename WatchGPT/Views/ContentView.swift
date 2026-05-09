@@ -176,11 +176,16 @@ struct ContentView: View {
 
     private var emptyTranscript: some View {
         VStack(spacing: 5) {
-            Image(systemName: session.isConnected ? "mic.fill" : "waveform")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(statusGradient)
-                .frame(width: 34, height: 34)
-                .background(statusTint.opacity(0.13), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            if session.isConnected {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(statusGradient)
+                    .frame(width: 34, height: 34)
+                    .background(statusTint.opacity(0.13), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            } else {
+                WatchBrandIconImage()
+                    .frame(width: 34, height: 34)
+            }
 
             Text(session.isConnected ? "Listening for you" : "Tap the button")
                 .font(.system(.caption, design: .rounded, weight: .semibold))
@@ -438,10 +443,16 @@ private struct VoiceOrb: View {
                     }
                 }
 
-                Image(systemName: activeIcon)
-                    .font(.system(size: 27, weight: .semibold))
-                    .foregroundStyle(.white.opacity(isLuminanceReduced ? 0.78 : 1.0))
-                    .symbolEffect(.pulse, options: .repeating, value: !isLuminanceReduced && phase == .listening)
+                if usesBrandArtwork && !isLuminanceReduced {
+                    WatchBrandIconImage()
+                        .frame(width: 54, height: 54)
+                        .shadow(color: .black.opacity(0.16), radius: 5, y: 2)
+                } else {
+                    Image(systemName: activeIcon)
+                        .font(.system(size: 27, weight: .semibold))
+                        .foregroundStyle(.white.opacity(isLuminanceReduced ? 0.78 : 1.0))
+                        .symbolEffect(.pulse, options: .repeating, value: !isLuminanceReduced && phase == .listening)
+                }
             }
             .scaleEffect(isPressed ? 0.92 : 1.0)
             .animation(.spring(duration: 0.18), value: isPressed)
@@ -500,6 +511,15 @@ private struct VoiceOrb: View {
         }
     }
 
+    private var usesBrandArtwork: Bool {
+        switch phase {
+        case .disconnected, .connected:
+            return true
+        case .connecting, .listening, .speaking:
+            return false
+        }
+    }
+
     private var glowColor: Color {
         switch phase {
         case .disconnected, .connected:
@@ -511,6 +531,14 @@ private struct VoiceOrb: View {
         case .speaking:
             return .purple
         }
+    }
+}
+
+private struct WatchBrandIconImage: View {
+    var body: some View {
+        Image("WatchBrandIcon")
+            .resizable()
+            .scaledToFit()
     }
 }
 

@@ -168,7 +168,7 @@ struct PhoneHelpView: View {
             rows: [
                 "Open WatchGPT on the watch.",
                 "Check the iPhone icon at the top of the watch screen. Green means the companion is reachable.",
-                "Tap the orb to start.",
+                "Tap the main button to start.",
                 "Tap the stop button to end the session."
             ]
         ),
@@ -199,7 +199,7 @@ struct PhoneHelpView: View {
             tint: .teal,
             rows: [
                 "Hands-free lets you speak naturally after the session starts.",
-                "Push-to-talk makes the orb behave like a hold-to-speak button.",
+                "Push-to-talk makes the main button behave like a hold-to-speak control.",
                 "Push-to-talk helps in noisy rooms or when you want stricter turn control."
             ]
         ),
@@ -208,7 +208,7 @@ struct PhoneHelpView: View {
             icon: "waveform.path.ecg",
             tint: .pink,
             rows: [
-                "Tap the orb while WatchGPT is speaking to interrupt.",
+                "Tap the main button while WatchGPT is speaking to interrupt.",
                 "Voice barge-in lets speech interrupt the assistant automatically.",
                 "If the assistant cuts itself off because of speaker echo, turn voice barge-in off."
             ]
@@ -398,8 +398,7 @@ struct PhoneAboutView: View {
             Section {
                 HStack(spacing: 14) {
                     PhoneAppIconImage()
-                        .frame(width: 58, height: 58)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .frame(width: 66, height: 66)
                         .shadow(color: Color.accentColor.opacity(0.18), radius: 10, y: 4)
 
                     VStack(alignment: .leading, spacing: 5) {

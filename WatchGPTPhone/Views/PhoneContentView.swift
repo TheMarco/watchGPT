@@ -153,8 +153,7 @@ struct PhoneContentView: View {
                 }
 
                 PhoneAppIconImage()
-                    .frame(width: 58, height: 58)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .frame(width: 70, height: 70)
                     .shadow(color: heroTint.opacity(0.26), radius: 14, y: 6)
 
                 if PhoneConfiguration.openAIAPIKey.isEmpty {
@@ -179,7 +178,7 @@ struct PhoneContentView: View {
         if bridge.isActive {
             return "Streaming to OpenAI. Keep both apps open."
         }
-        return "Tap the orb on your Apple Watch to start a conversation."
+        return "Tap the main button on your Apple Watch to start a conversation."
     }
 
     private var heroTint: Color {
@@ -714,10 +713,10 @@ struct PhoneTranscriptDetailView: View {
 
 struct PhoneAppIconImage: View {
     var body: some View {
-        if let image = Self.appIcon {
+        if let image = Self.brandIcon {
             Image(uiImage: image)
                 .resizable()
-                .scaledToFill()
+                .scaledToFit()
         } else {
             ZStack {
                 LinearGradient(
@@ -732,7 +731,11 @@ struct PhoneAppIconImage: View {
         }
     }
 
-    private static var appIcon: UIImage? {
+    private static var brandIcon: UIImage? {
+        if let brand = UIImage(named: "BrandIcon") {
+            return brand
+        }
+
         guard
             let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any],
             let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],

@@ -41,7 +41,7 @@ OPENAI_API_KEY=sk-... npm run configure:phone
 ## 3. Use it
 
 - Open WatchGPT on the iPhone and keep it in the foreground.
-- On the watch, open WatchGPT and tap the orb.
+- On the watch, open WatchGPT and tap the main button.
 - Speak naturally; interrupt by speaking while the assistant talks.
 
 If the watch shows "Open WatchGPT on your iPhone," the iPhone app got suspended in the background. Reopen it and try again.

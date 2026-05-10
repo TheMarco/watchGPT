@@ -9,7 +9,6 @@ struct PhoneSettingsView: View {
     @AppStorage(PhoneConfiguration.regularReasoningEffortKey) private var reasoningEffort = ReasoningEffort.low.rawValue
     @AppStorage(PhoneConfiguration.assistantLanguageKey) private var language = AssistantLanguage.auto.rawValue
     @AppStorage(PhoneConfiguration.braveSearchAPIKeyKey) private var braveSearchKey = PhoneConfiguration.defaultBraveSearchAPIKey
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Form {
@@ -122,11 +121,6 @@ struct PhoneSettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Done") { dismiss() }
-            }
-        }
     }
 }
 

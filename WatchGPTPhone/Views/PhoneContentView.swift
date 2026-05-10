@@ -3,7 +3,6 @@ import UIKit
 
 struct PhoneContentView: View {
     @ObservedObject private var bridge = PhoneRealtimeBridge.shared
-    @State private var showingSettings = false
     @State private var showingClearConfirmation = false
     @State private var isDiagnosticsExpanded = false
 
@@ -41,11 +40,6 @@ struct PhoneContentView: View {
             } message: {
                 Text("This will permanently remove every saved transcript.")
             }
-            .sheet(isPresented: $showingSettings) {
-                NavigationStack {
-                    PhoneSettingsView()
-                }
-            }
             .animation(.smooth(duration: 0.35), value: bridge.isActive)
             .animation(.smooth(duration: 0.25), value: bridge.statusText)
         }
@@ -67,8 +61,8 @@ struct PhoneContentView: View {
                     Image(systemName: "info.circle")
                 }
 
-                Button {
-                    showingSettings = true
+                NavigationLink {
+                    PhoneSettingsView()
                 } label: {
                     Image(systemName: "gearshape")
                 }

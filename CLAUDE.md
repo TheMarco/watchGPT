@@ -12,9 +12,9 @@ Repo: https://github.com/TheMarco/watchGPT.
 - The watch app supports two voice engines. The user-facing names are **Fast Mode** and **Think Mode** (`VoiceEngine.displayName`); the underlying enum cases are `realtime` and `gpt5` and the persisted UserDefaults values are unchanged.
   - **Fast Mode** (`realtime`): OpenAI `gpt-realtime` over a WebSocket held by the phone.
   - **Think Mode** (`gpt5`): phone-side local speech detection, transcription, Responses API using `gpt-5.5` with iPhone-configurable reasoning effort, then TTS back to the watch.
-- **Web search is wired in both modes**:
+- **Web search is wired in both modes** and requires only the OpenAI key:
   - Think Mode passes `tools: [{type: "web_search"}]` and `tool_choice: "auto"` to the Responses API; OpenAI runs the search/fetch/synthesis server-side.
-  - Fast Mode registers a `web_search` function tool on `session.update` only when a Brave Search key is configured. The phone bridge listens for `response.output_item.done` with `item.type == "function_call"`, runs the search via `BraveSearchProvider` (8 s timeout), then replies with a `conversation.item.create` of type `function_call_output` followed by `response.create`. No key = no tool registered.
+  - Fast Mode registers a single `web_search` function tool on `session.update`. The phone bridge listens for `response.output_item.done` with `item.type == "function_call"` and proxies to a Responses API call with OpenAI's hosted `web_search` tool (`Self.runResponsesWebSearch`, 25 s timeout), returning the synthesized `answer` string in `function_call_output`. No third-party API keys anywhere.
 - Hands-free conversation is the default. Push-to-talk remains available through the watch settings.
 - **Voice barge-in is OFF by default.** When off, mic forwarding is suppressed for the entire `phase == .speaking` duration AND while `awaitingAssistantResponse` is true (between `speech_stopped` and the next phase transition out of `.speaking`). Tap-to-interrupt always works regardless via `recoverToConnected()` clearing both guards.
 - **Mic sensitivity preset** on the watch (`AppConfiguration.micSensitivity`): High/Standard/Low maps to `RealtimeAudioIO.inputGain` values 5.5 / 4.0 / 2.5. Read on prewarm and on session start.
@@ -75,9 +75,9 @@ disconnected -> connecting -> connected <-> listening
 - `WatchGPTPhone/` - iOS companion target, Swift 5, deployment target 17.0
   - `WatchGPTPhoneApp.swift` - app entry, activates `PhoneRealtimeBridge`.
   - `Views/PhoneContentView.swift` - app-icon hero status card with TimelineView pulse, Help/About shortcuts, collapsible diagnostics panel, transcript list (insetGrouped, leading badges), iMessage-style chat-bubble detail view with usage metadata, and shared `PhoneAppIconImage`.
-  - `Views/PhoneSettingsView.swift` - OpenAI API key, default mode, per-mode voice, Fast Mode turn-taking, Think Mode reasoning, language picker, Brave Search key, colorful `PhoneHelpView`, and `PhoneAboutView`.
-  - `Services/PhoneRealtimeBridge.swift` - phone-side bridge for both engines, transcript persistence, OpenAI calls, keep-alive, web-search tool execution. Inlines `WebSearchProvider`/`BraveSearchProvider` at the top of the file.
-  - `Support/PhoneConfiguration.swift` - model names, API keys (OpenAI + Brave), voice config, endpoint builders, language enum, effective-instructions composition.
+  - `Views/PhoneSettingsView.swift` - OpenAI API key, default mode, per-mode voice, Fast Mode turn-taking, Think Mode reasoning, language picker, colorful `PhoneHelpView`, and `PhoneAboutView`.
+  - `Services/PhoneRealtimeBridge.swift` - phone-side bridge for both engines, transcript persistence, OpenAI calls, keep-alive, and Fast Mode tool execution (`runWebSearchCall` via OpenAI Responses API).
+  - `Support/PhoneConfiguration.swift` - model names, OpenAI API key, voice config, endpoint builders, language enum, effective-instructions composition.
   - `Config/WatchGPTPhone.xcconfig` - committed; includes gitignored `LocalSecrets.xcconfig`.
 - `Shared/RealtimeMessages.swift` - compact message envelope shared by both targets, plus the `VoiceEngine` enum (raw values `realtime`/`gpt5`, displayNames Fast Mode/Think Mode).
 - `WatchGPT/Assets.xcassets/PhoneAppIcon.appiconset` - phone icon renditions generated from root `icon.png`.
@@ -100,8 +100,8 @@ OpenAI PCM16 deltas -> iPhone -> WCSession data -> Watch playback
 - Realtime VAD:
   - hands-free uses semantic VAD with `create_response: true` and `interrupt_response: true`
   - push-to-talk sets `turn_detection: null` and sends `input_audio_buffer.commit` + `response.create` manually
-- Web search: when `PhoneConfiguration.realtimeWebSearchEnabled` is true (Brave key present), `sendSessionUpdate` registers a `web_search` function tool with `tool_choice: "auto"` and appends a behavior addendum to the instructions. The bridge handles `response.output_item.done` for `function_call` items, runs `BraveSearchProvider.search` (8 s timeout), and sends `function_call_output` + `response.create`.
-- `lastSentVoice` / `lastSentLanguage` / `lastSentWebSearchEnabled` track config changes; the UserDefaults observer fires a fresh `session.update` mid-session when any change.
+- Tools: `sendSessionUpdate` always registers a single `web_search` tool with `tool_choice: "auto"`. `runWebSearchCall` proxies to OpenAI's hosted `web_search` via the Responses API (`Self.runResponsesWebSearch`) and returns the synthesized `answer` string; the realtime model just speaks it.
+- `lastSentVoice` / `lastSentLanguage` / `lastSentVADEagerness` track config changes; the UserDefaults observer fires a fresh `session.update` mid-session when any change.
 - Audio deltas are buffered to roughly 9,600 bytes before sending back to the watch for lower latency.
 
 ### Think Mode (GPT-5.5)
@@ -155,7 +155,7 @@ This is the best currently implemented path for keeping watch execution alive. I
 
 ## Important Invariants
 
-- API keys (OpenAI + optional Brave) live only on the iPhone.
+- The OpenAI API key is the only required key, and it lives only on the iPhone. Both modes share the same OpenAI-hosted `web_search` backend — no third-party search/data keys.
 - Watch and iPhone apps both need to be running/reachable for live sessions.
 - `WCSession.sendMessageData` is used for raw audio bytes.
 - `WCSession.sendMessage` is used for compact control/text messages.
@@ -163,7 +163,7 @@ This is the best currently implemented path for keeping watch execution alive. I
 - Audio format is 24 kHz PCM16 mono in both directions.
 - Avoid adding haptics back into the watch voice session unless there is a very specific reason and on-device evidence that it does not destabilize the session.
 - The assistant prompt explicitly says it has no visual/camera/screen/location/sensor access. This was added after it said things like "I can see you."
-- The system prompt is composed in `PhoneConfiguration.effectiveInstructions`, which appends a language directive when a specific language is picked. Fast Mode further appends a `web_search` behavior addendum when a Brave key is present (handled in `sendSessionUpdate`). Think Mode appends its own web_search addendum inside `createRegularResponse`. Don't fork these accidentally — keep `effectiveInstructions` as the base and append per-mode.
+- The system prompt is composed in `PhoneConfiguration.effectiveInstructions`, which appends a language directive when a specific language is picked. Fast Mode appends `realtimeWebSearchInstructions` inside `sendSessionUpdate`. Think Mode appends its own web_search addendum inside `createRegularResponse`. Don't fork these accidentally — keep `effectiveInstructions` as the base and append per-mode.
 - `VoiceEngine` raw values (`realtime`, `gpt5`) are persisted in UserDefaults and must not change. Display names come from `displayName`.
 - Tap-to-interrupt must keep working in every barge-in/echo-guard configuration. `recoverToConnected()` is the single place that clears `playbackEndsAt`, `awaitingAssistantResponse`, and the assistant draft.
 
@@ -270,5 +270,4 @@ Note: full `xcodebuild` may fail in this local environment because CoreSimulator
 - If OpenAI rejects `gpt-5.5`, the user may not have API access to that model. The phone bridge should surface the API error.
 - Background pickup is limited. If the iPhone app is force-quit, the watch cannot revive it.
 - Reconnect during an in-flight turn can lose buffered audio. The UX should eventually surface "connection dropped, try again" more explicitly.
-- Web search latency adds 1-3 s before the spoken reply starts in either mode. The realtime instructions tell the model to say a brief preamble ("Let me check.") before slow searches; verify it actually does that on-device.
-- The Brave free tier has aggressive rate limits. Heavy use can return 429s — the phone surfaces these as `Search HTTP 429: …` in `function_call_output` so the model can recover, but watch out for it during testing.
+- Web search latency in Fast Mode is 2-5 s (Responses API web_search round-trip) before the spoken reply starts; the realtime instructions tell the model to say a brief preamble ("Let me check.") before slow searches.

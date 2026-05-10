@@ -8,7 +8,6 @@ struct PhoneSettingsView: View {
     @AppStorage(PhoneConfiguration.realtimeVADEagernessKey) private var vadEagerness = RealtimeVADEagerness.low.rawValue
     @AppStorage(PhoneConfiguration.regularReasoningEffortKey) private var reasoningEffort = ReasoningEffort.low.rawValue
     @AppStorage(PhoneConfiguration.assistantLanguageKey) private var language = AssistantLanguage.auto.rawValue
-    @AppStorage(PhoneConfiguration.braveSearchAPIKeyKey) private var braveSearchKey = PhoneConfiguration.defaultBraveSearchAPIKey
 
     var body: some View {
         Form {
@@ -92,17 +91,6 @@ struct PhoneSettingsView: View {
                 Text("Assistant language")
             } footer: {
                 Text("Auto matches whatever language you speak. Pick a specific language to lock the assistant to it. Applied immediately if a session is live.")
-            }
-
-            Section {
-                SecureField("Brave Search API key (optional)", text: $braveSearchKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.system(.body, design: .monospaced))
-            } header: {
-                Text("Web search (Realtime)")
-            } footer: {
-                Text("When set, Realtime mode can search the web during a conversation. Get a free key at api.search.brave.com. Leave blank to disable web search in Realtime mode. Think Mode uses OpenAI's built-in search and does not need this key.")
             }
 
             Section {
@@ -232,9 +220,9 @@ struct PhoneHelpView: View {
             icon: "magnifyingglass.circle.fill",
             tint: .mint,
             rows: [
-                "Think Mode can use OpenAI's built-in web search automatically.",
-                "Fast Mode needs a Brave Search API key to search the web.",
-                "Use search for news, prices, releases, weather, sports, and anything time-sensitive."
+                "Both modes use OpenAI's hosted web search automatically — no extra key required.",
+                "Fast Mode briefly says \"Let me check\" before searches, which take a couple of seconds.",
+                "Use search for crypto and stock prices, FX rates, weather, news, sports, and anything time-sensitive."
             ]
         ),
         PhoneHelpTopic(

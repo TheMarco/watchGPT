@@ -24,7 +24,7 @@ The watch cannot reliably open arbitrary outbound WebSockets on its own. That's 
 
 - **Fast Mode** — OpenAI `gpt-realtime`, semantic VAD. Streaming speech-to-speech, conversational latency.
 - **Think Mode** — phone-side speech detection → transcription → Responses API (`gpt-5.5`, configurable reasoning effort) → TTS → playback. Multi-second latency per turn, but you get the smarter model.
-- **Web search in both modes.** Think Mode uses OpenAI's built-in `web_search` server-side (no extra config). Fast Mode uses a function-tool callout to Brave Search if you provide a free Brave API key.
+- **Web search in both modes — no extra keys.** Both modes use OpenAI's hosted `web_search` server-side: Think Mode calls the Responses API directly, and Fast Mode registers a single `web_search` function tool that proxies to the same backend.
 - **Hands-free** by default. Push-to-talk available in watch settings.
 - **Voice barge-in toggle.** Off by default — half-duplex with tap-to-interrupt for quieter, less-echoey conversations. Flip it on if you want to interrupt the assistant by talking.
 - **38 languages.** Lock the assistant (and the transcription model) to a specific language, or leave it on Auto.
@@ -126,16 +126,15 @@ On the **iPhone**, hit the gear icon:
 - **Fast Mode turn-taking** — Patient / Balanced / Quick semantic VAD eagerness.
 - **Think Mode voice and reasoning** — choose TTS voice and Low / Medium / High reasoning effort.
 - **Assistant language** — Auto (matches what you speak, falls back to English when uncertain) or pin to one of 38 languages.
-- **Brave Search API key** — optional. Enables `web_search` in Fast Mode. Get one free at <https://api.search.brave.com>. Think Mode does not need this.
 
 The iPhone companion main screen also includes **Help** and **About** shortcuts, plus a collapsible **Diagnostics** panel for live troubleshooting.
 
 ## Web search
 
-The assistant can fetch fresh information when you ask things like *"what's the latest…"*, *"current price of…"*, *"search the web for…"*, or any time it would otherwise have to guess from training-time data.
+The assistant fetches fresh information when you ask things like *"what's the latest…"*, *"current price of…"*, *"weather in…"*, or any time it would otherwise have to guess from training-time data. **No third-party API keys required** — the OpenAI key is the only one you set.
 
-- **Think Mode** uses OpenAI's built-in `web_search` tool, executed server-side. No extra setup — works as soon as you have an OpenAI key with access to `gpt-5.5`. Adds a couple of seconds to the response.
-- **Fast Mode** uses a function-tool callout to your configured search provider (Brave by default). Without a Brave key, the tool isn't registered and the assistant correctly reports it has no search capability. With a key, it'll briefly say "Let me check…" before answering with sources.
+- **Think Mode** calls the Responses API with OpenAI's hosted `web_search` tool, executed server-side.
+- **Fast Mode** registers a single `web_search` function tool. When the realtime model calls it, the iPhone proxies to the same Responses API + hosted `web_search` backend and feeds the synthesized answer back into the realtime turn. You'll briefly hear "Let me check…" while the lookup runs (typically 2-5 s).
 
 ## Why the watch asks for workout access
 

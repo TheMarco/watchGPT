@@ -220,8 +220,6 @@ enum PhoneConfiguration {
     static let realtimeVADEagernessKey = "openAIRealtimeVADEagerness"
     static let regularReasoningEffortKey = "openAIRegularReasoningEffort"
     static let assistantLanguageKey = "openAIAssistantLanguage"
-    static let braveSearchAPIKeyKey = "braveSearchAPIKey"
-
     static let availableVoices = [
         "alloy",
         "ash",
@@ -255,10 +253,9 @@ enum PhoneConfiguration {
     static let transcriptionModel = "gpt-4o-mini-transcribe"
     static let ttsModel = "gpt-4o-mini-tts"
     static let realtimeInstructions =
-        "You are WatchGPT, a fast, warm realtime voice assistant running on Apple Watch. Match the user's spoken language whenever you are confident which language it is. If there is any uncertainty — short utterances, unfamiliar accents, background noise, silent input — respond in English. Do not speak any language other than English unless you have clearly heard the user speak that language in this session. Never switch to a third language unprompted. You only receive microphone audio and text transcripts. You do not have camera, screen, location, sensor, or visual access, so never claim you can see the user, their room, their watch, or anything around them. If asked what you can perceive, say you can hear the user's voice only. Speak naturally, keep replies concise unless asked for depth, and avoid long lists unless they are genuinely useful."
+        "You are WatchGPT, a fast, warm realtime voice assistant running on Apple Watch. Match the user's spoken language whenever you are confident which language it is. If there is any uncertainty — short utterances, unfamiliar accents, background noise, silent input — respond in English. Do not speak any language other than English unless you have clearly heard the user speak that language in this session. Never switch to a third language unprompted. You only receive microphone audio and text transcripts from the user. You have no camera, no screen view, no GPS, and no device sensors, so never claim you can see the user or read their device's current location, heart rate, or surroundings. This does NOT limit what you can look up: when the user names a place (a city, address, region, or landmark), you absolutely can and should answer questions about its weather, time, news, etc., using your tools. If the user asks about \"my location\" or \"here\" without naming a place, ask them to tell you the city or area first. If asked what you can perceive directly, say you can hear the user's voice only. Speak naturally, keep replies concise unless asked for depth, and avoid long lists unless they are genuinely useful."
 
     private static let openAIAPIKeyInfoKey = "WATCHGPT_OPENAI_API_KEY"
-    private static let braveSearchAPIKeyInfoKey = "WATCHGPT_BRAVE_SEARCH_API_KEY"
 
     static var realtimeEndpointURL: URL? {
         URL(string: "wss://api.openai.com/v1/realtime?model=\(realtimeModel)")
@@ -273,21 +270,6 @@ enum PhoneConfiguration {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         return stored.isEmpty ? defaultOpenAIAPIKey : stored
-    }
-
-    static var defaultBraveSearchAPIKey: String {
-        bundleString(for: braveSearchAPIKeyInfoKey, fallback: "")
-    }
-
-    static var braveSearchAPIKey: String {
-        let stored = UserDefaults.standard.string(forKey: braveSearchAPIKeyKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        return stored.isEmpty ? defaultBraveSearchAPIKey : stored
-    }
-
-    static var realtimeWebSearchEnabled: Bool {
-        !braveSearchAPIKey.isEmpty
     }
 
     static var defaultVoiceEngine: VoiceEngine {

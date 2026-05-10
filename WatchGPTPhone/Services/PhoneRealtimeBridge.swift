@@ -312,7 +312,9 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             return
         }
 
-        startTranscriptSession(engine: .realtime)
+        if !isReconnecting {
+            startTranscriptSession(engine: .realtime)
+        }
 
         var request = URLRequest(url: endpoint)
         request.timeoutInterval = 30

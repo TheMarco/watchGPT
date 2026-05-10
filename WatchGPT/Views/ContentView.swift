@@ -536,7 +536,7 @@ private struct VoiceOrb: View {
 
 private struct WatchBrandIconImage: View {
     var body: some View {
-        Image("WatchBrandIcon")
+        Image("BrandIcon")
             .resizable()
             .scaledToFit()
     }

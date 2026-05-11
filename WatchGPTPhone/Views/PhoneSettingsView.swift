@@ -374,6 +374,8 @@ struct PhoneHelpView: View {
 }
 
 struct PhoneAboutView: View {
+    @State private var showingLicense = false
+
     var body: some View {
         List {
             Section {
@@ -411,7 +413,9 @@ struct PhoneAboutView: View {
                 Text("You may use, copy, modify, and share this software for non-commercial purposes. Commercial use requires a separate commercial license.")
                     .foregroundStyle(.secondary)
 
-                Link(destination: URL(string: "https://polyformproject.org/licenses/noncommercial/1.0.0/")!) {
+                Button {
+                    showingLicense = true
+                } label: {
                     Label("Read the license", systemImage: "doc.text")
                 }
             }
@@ -424,6 +428,40 @@ struct PhoneAboutView: View {
             }
         }
         .navigationTitle("About")
+        .sheet(isPresented: $showingLicense) {
+            LicenseSheet()
+        }
+    }
+}
+
+private struct LicenseSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(licenseText)
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
+            }
+            .navigationTitle("License")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var licenseText: String {
+        guard let url = Bundle.main.url(forResource: "LICENSE", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return "LICENSE file not found in app bundle."
+        }
+        return text
     }
 }
 

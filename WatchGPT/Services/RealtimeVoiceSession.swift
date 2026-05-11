@@ -480,9 +480,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         playbackEndsAt = bufferEnd.addingTimeInterval(trailingPad)
         markConnectedAfterPlayback()
 
-        if UserDefaults.standard.bool(forKey: AppConfiguration.speakRepliesKey, default: true) {
-            audioIO.playPCM16(audio, prefersOneShotPlayer: prefersOneShotPlayer)
-        }
+        audioIO.playPCM16(audio, prefersOneShotPlayer: prefersOneShotPlayer)
     }
 
     private func isInPlaybackEchoWindow() -> Bool {

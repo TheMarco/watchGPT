@@ -200,7 +200,6 @@ struct PhoneHelpView: View {
             icon: "speaker.wave.2.fill",
             tint: .indigo,
             rows: [
-                "Audio replies can be turned off on the watch for text-only responses.",
                 "Mic sensitivity lives on the watch because it affects capture from the watch microphone.",
                 "Use Low sensitivity in loud rooms and High sensitivity in quiet rooms."
             ]

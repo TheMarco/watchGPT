@@ -3,7 +3,6 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(AppConfiguration.automaticConversationKey) private var automaticConversation = true
     @AppStorage(AppConfiguration.workoutRuntimeKey) private var workoutRuntime = true
-    @AppStorage(AppConfiguration.speakRepliesKey) private var speakReplies = true
     @AppStorage(AppConfiguration.micSensitivityKey) private var micSensitivity = MicSensitivity.default.rawValue
     @AppStorage(AppConfiguration.voiceBargeInKey) private var voiceBargeIn = false
 
@@ -14,11 +13,6 @@ struct SettingsView: View {
             Section {
                 Toggle(isOn: $automaticConversation) {
                     Label("Hands-free conversation", systemImage: "waveform.and.person.filled")
-                }
-                .tint(.accentColor)
-
-                Toggle(isOn: $speakReplies) {
-                    Label("Audio replies", systemImage: "speaker.wave.2.fill")
                 }
                 .tint(.accentColor)
             } header: {

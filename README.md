@@ -113,7 +113,6 @@ If everything is wired up correctly, the watch shows "Connecting…" briefly and
 On the **watch**, hit the gear icon:
 
 - **Hands-free conversation** — On = talk naturally; off = push and hold the main button to speak.
-- **Audio replies** — Off mutes the speaker (text-only).
 - **Mic sensitivity** — High (quiet rooms), Standard (default), Low (noisy rooms — TV, kids).
 - **Voice barge-in** — Off (default) gives clean half-duplex with tap-to-interrupt. On lets you interrupt by talking.
 - **Workout keep-alive** — On (default) uses `HKWorkoutSession` for longer process life and the always-on dim treatment. Off = `WKExtendedRuntimeSession` only.

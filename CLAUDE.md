@@ -47,7 +47,7 @@ The watch shows a large rounded-square main voice button.
 - In push-to-talk mode: hold the main button to talk, release to commit.
 - Tap-to-interrupt during `.speaking` always works (it routes through `beginTurn` → `recoverToConnected`, clearing the playback echo guard and `awaitingAssistantResponse`).
 - The watch top bar shows the title, an iPhone reachability pill, and the Settings button.
-- Settings on the watch cover interaction/runtime: hands-free, audio replies, mic sensitivity, voice barge-in, workout keep-alive, and clear chat. Model-facing choices live on the iPhone: default mode, per-mode voice, Fast Mode VAD eagerness, Think Mode reasoning, language, and search keys.
+- Settings on the watch cover interaction/runtime: hands-free, mic sensitivity, voice barge-in, workout keep-alive, and clear chat. Model-facing choices live on the iPhone: default mode, per-mode voice, Fast Mode VAD eagerness, Think Mode reasoning, and language.
 
 Watch phase machine:
 
@@ -64,7 +64,7 @@ disconnected -> connecting -> connected <-> listening
   - `WatchGPTApp.swift` - app entry, registers defaults.
   - `Views/ContentView.swift` - rounded-square main button UI (TimelineView-driven, AOD-aware, audio-reactive halo/ripples, `WatchBrandIcon` in idle/ready states), reachability/status top bar, transcript view, stop/settings controls.
   - `Views/RealtimeTranscriptBubble.swift` - watch transcript bubble styling shared by live/final transcript lines.
-  - `Views/SettingsView.swift` - hands-free, audio replies, mic sensitivity, voice barge-in, workout keep-alive, clear chat.
+  - `Views/SettingsView.swift` - hands-free, mic sensitivity, voice barge-in, workout keep-alive, clear chat.
   - `Services/RealtimeVoiceSession.swift` - watch-side phase machine and `WCSession` client. Owns the idle watchdog, the playback-echo guard, the `awaitingAssistantResponse` flag, and `lastInputPeak` for the halo.
   - `Services/RealtimeAudioIO.swift` - watch mic capture and playback. 24 kHz PCM16 mono. Uses `.voiceChat`, enables voice processing, exposes `prepare()` for cold-start prewarm and a settable `inputGain` for the sensitivity preset.
   - `Support/AppConfiguration.swift` - watch settings keys/defaults plus the `MicSensitivity` enum. No API key on watch.

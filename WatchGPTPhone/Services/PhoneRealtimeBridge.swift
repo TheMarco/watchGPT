@@ -245,7 +245,6 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         var request = URLRequest(url: endpoint)
         request.timeoutInterval = 30
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "authorization")
-        request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
 
         let task = urlSession.webSocketTask(with: request)
         webSocket = task

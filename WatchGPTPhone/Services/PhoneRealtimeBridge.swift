@@ -703,6 +703,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         let tools: [[String: Any]] = [Self.webSearchToolSpec]
 
         let session: [String: Any] = [
+            "type": "realtime",
             "instructions": instructions,
             "modalities": ["text", "audio"],
             "voice": voice,

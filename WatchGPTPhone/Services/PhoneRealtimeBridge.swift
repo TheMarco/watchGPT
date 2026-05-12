@@ -702,15 +702,25 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
 
         let tools: [[String: Any]] = [Self.webSearchToolSpec]
 
+        let audioInput: [String: Any] = [
+            "format": ["type": "audio/pcm", "rate": 24000],
+            "transcription": transcriptionConfig,
+            "turn_detection": turnDetection
+        ]
+
+        let audioOutput: [String: Any] = [
+            "voice": voice,
+            "format": ["type": "audio/pcm", "rate": 24000]
+        ]
+
         let session: [String: Any] = [
             "type": "realtime",
             "instructions": instructions,
-            "modalities": ["text", "audio"],
-            "voice": voice,
-            "input_audio_format": "pcm16",
-            "output_audio_format": "pcm16",
-            "input_audio_transcription": transcriptionConfig,
-            "turn_detection": turnDetection,
+            "output_modalities": ["audio"],
+            "audio": [
+                "input": audioInput,
+                "output": audioOutput
+            ],
             "tools": tools,
             "tool_choice": "auto"
         ]

@@ -252,10 +252,20 @@ enum PhoneConfiguration {
     static let regularVoiceModel = "gpt-5.5"
     static let transcriptionModel = "gpt-4o-mini-transcribe"
     static let ttsModel = "gpt-4o-mini-tts"
+    static let transcriptMetadataModel = "gpt-4.1-mini"
     static let realtimeInstructions =
         "You are WatchGPT, a fast, warm realtime voice assistant running on Apple Watch. Match the user's spoken language whenever you are confident which language it is. If there is any uncertainty — short utterances, unfamiliar accents, background noise, silent input — respond in English. Do not speak any language other than English unless you have clearly heard the user speak that language in this session. Never switch to a third language unprompted. You only receive microphone audio and text transcripts from the user. You have no camera, no screen view, no GPS, and no device sensors, so never claim you can see the user or read their device's current location, heart rate, or surroundings. This does NOT limit what you can look up: when the user names a place (a city, address, region, or landmark), you absolutely can and should answer questions about its weather, time, news, etc., using your tools. If the user asks about \"my location\" or \"here\" without naming a place, ask them to tell you the city or area first. If asked what you can perceive directly, say you can hear the user's voice only. Speak naturally, keep replies concise unless asked for depth, and avoid long lists unless they are genuinely useful."
 
     private static let openAIAPIKeyInfoKey = "WATCHGPT_OPENAI_API_KEY"
+    private static let keychainService = "dev.watchgpt.app"
+    private static let keychainAPIKeyAccount = "openai-api-key"
+
+    // The resolved key is cached so hot paths (e.g. the 30 fps hero TimelineView
+    // reading `openAIAPIKey.isEmpty`, and every network call) don't hit the
+    // Keychain repeatedly. Guarded because the getter is read off the main actor
+    // too. Invalidated whenever the key is changed.
+    private static let apiKeyLock = NSLock()
+    private static var cachedAPIKey: String?
 
     static var realtimeEndpointURL: URL? {
         URL(string: "wss://api.openai.com/v1/realtime?model=\(realtimeModel)")
@@ -266,10 +276,52 @@ enum PhoneConfiguration {
     }
 
     static var openAIAPIKey: String {
-        let stored = UserDefaults.standard.string(forKey: openAIAPIKeyKey)?
+        apiKeyLock.lock()
+        defer { apiKeyLock.unlock() }
+
+        if let cachedAPIKey {
+            return cachedAPIKey
+        }
+
+        let stored = (KeychainStore.string(service: keychainService, account: keychainAPIKeyAccount) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = stored.isEmpty ? defaultOpenAIAPIKey : stored
+        cachedAPIKey = resolved
+        return resolved
+    }
+
+    /// Persists a user-entered key to the Keychain. Passing empty or the build
+    /// default clears the override so the bundled key (if any) is used.
+    static func setOpenAIAPIKey(_ value: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == defaultOpenAIAPIKey {
+            KeychainStore.set(nil, service: keychainService, account: keychainAPIKeyAccount)
+        } else {
+            KeychainStore.set(trimmed, service: keychainService, account: keychainAPIKeyAccount)
+        }
+        apiKeyLock.lock()
+        cachedAPIKey = nil
+        apiKeyLock.unlock()
+    }
+
+    /// One-time move of any user-entered key from the legacy UserDefaults slot
+    /// into the Keychain, then scrubs the plaintext copy.
+    static func migrateAPIKeyToKeychainIfNeeded() {
+        let legacy = UserDefaults.standard.string(forKey: openAIAPIKeyKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-        return stored.isEmpty ? defaultOpenAIAPIKey : stored
+        if !legacy.isEmpty,
+           legacy != defaultOpenAIAPIKey,
+           KeychainStore.string(service: keychainService, account: keychainAPIKeyAccount) == nil
+        {
+            KeychainStore.set(legacy, service: keychainService, account: keychainAPIKeyAccount)
+        }
+
+        UserDefaults.standard.removeObject(forKey: openAIAPIKeyKey)
+
+        apiKeyLock.lock()
+        cachedAPIKey = nil
+        apiKeyLock.unlock()
     }
 
     static var defaultVoiceEngine: VoiceEngine {
@@ -328,7 +380,6 @@ enum PhoneConfiguration {
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
-            openAIAPIKeyKey: defaultOpenAIAPIKey,
             defaultVoiceEngineKey: VoiceEngine.realtime.rawValue,
             realtimeVoiceKey: defaultRealtimeVoice,
             thinkVoiceKey: defaultThinkVoice,

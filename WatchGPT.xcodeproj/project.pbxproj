@@ -3,10 +3,11 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09555870C98FE239BE989C57 /* AudioSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF4BB1822B1F1EDC7D185D23 /* AudioSupport.swift */; };
 		0AFD49DA55FCD9534DA43327 /* RealtimeVoiceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F606194901DBCEB14E299D04 /* RealtimeVoiceSession.swift */; };
 		16A693BADE75A9C5F3685F88 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 82FECC0B63A41BCA479439C3 /* Assets.xcassets */; };
 		308F22188D6E829FEE261848 /* RealtimeMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE733AC4756CF4216F3721D7 /* RealtimeMessages.swift */; };
@@ -14,17 +15,25 @@
 		506D3AF53B9154C929176518 /* WatchGPTPhoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9912439D9B78572153C63A6F /* WatchGPTPhoneApp.swift */; };
 		5267D89DA87F8300DBA942E6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19B334EEB454E1D4B469D02 /* SettingsView.swift */; };
 		532870553778A481D5BC3163 /* RealtimeTranscriptLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3393270746CA1B5AEA63EC5 /* RealtimeTranscriptLine.swift */; };
+		5AC2117ADE8560027F1CCD10 /* SharedLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE56B393EAA77578F13D9FCA /* SharedLogicTests.swift */; };
+		5ED86CC147ACEF396A076A16 /* AudioSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF4BB1822B1F1EDC7D185D23 /* AudioSupport.swift */; };
 		5FB6FF8705F1B750BF68FE17 /* RealtimeTranscriptBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81BC46B8440A08E21473EEA2 /* RealtimeTranscriptBubble.swift */; };
 		679D5C75E78A16405BD248B2 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE54F03B8426E24FDD2E876C /* ContentView.swift */; };
+		73FE49C1507849E18CC2E767 /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 838EA55A18A2265A96D18A1F /* LiquidGlass.swift */; };
 		7416E1F08EF325350A958D15 /* WatchGPTApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 196D6B02407CD5B3265C6B0C /* WatchGPTApp.swift */; };
 		7875A8A4AAAB0ED7C25F4BE0 /* PhoneSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29FAE9893890A110BC75B18F /* PhoneSettingsView.swift */; };
 		7899F52E30183A263869FF3C /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16E7A9D3BA77103A10FD78E7 /* AppConfiguration.swift */; };
 		794879D9E07A73269B089522 /* LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 8A48F5A9A2DC5A8B5A51E3E5 /* LICENSE.txt */; };
+		86A240FD58BBC7B3E7519497 /* OpenAIParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F303F6B717A981BA5207E1E /* OpenAIParsingTests.swift */; };
 		9381CECACE94A00341538CEA /* RealtimeMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE733AC4756CF4216F3721D7 /* RealtimeMessages.swift */; };
 		98FFB2E31BC1993194609AC0 /* PhoneRealtimeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7EF3564C120FF7202DCC95 /* PhoneRealtimeBridge.swift */; };
+		A52A905EED17D554B29F91AA /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C4683EE196D5ACC0E06061 /* KeychainStore.swift */; };
+		A8FA9F4A6ED94F10D2508913 /* OpenAIParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348A37055D347EB6B3822BD8 /* OpenAIParsing.swift */; };
 		ACDEB31D5867794CE7C3307F /* WatchGPT.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5F864EA057EA60633EE8481E /* WatchGPT.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CDB294B281AD7D432F123F2E /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 838EA55A18A2265A96D18A1F /* LiquidGlass.swift */; };
 		E3FED1874FF09F50E1F44A9F /* RealtimeAudioIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E089FF3E8068FA7D6E698A /* RealtimeAudioIO.swift */; };
 		E9A358AB3484002590C7F9BA /* PhoneContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD120FC35747E9FE57304295 /* PhoneContentView.swift */; };
+		F31BE484BA50BB57497ED703 /* WatchGPTIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451B5F8D0C1C802AA0E33D24 /* WatchGPTIntents.swift */; };
 		F9156B0BE10B8A97B6A59815 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 82FECC0B63A41BCA479439C3 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -35,6 +44,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 9F5EA48E4FFD27327D981664;
 			remoteInfo = WatchGPT;
+		};
+		CFA6266F86715F3365EDD21A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 773CCC2095453D3D3767323C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 78D8D1D3264018B7CBFF21D7;
+			remoteInfo = WatchGPTPhone;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -58,13 +74,19 @@
 		196D6B02407CD5B3265C6B0C /* WatchGPTApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchGPTApp.swift; sourceTree = "<group>"; };
 		29FAE9893890A110BC75B18F /* PhoneSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSettingsView.swift; sourceTree = "<group>"; };
 		2E7EF3564C120FF7202DCC95 /* PhoneRealtimeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRealtimeBridge.swift; sourceTree = "<group>"; };
+		348A37055D347EB6B3822BD8 /* OpenAIParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIParsing.swift; sourceTree = "<group>"; };
+		38C4683EE196D5ACC0E06061 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		436F7D8C73FD27CCC94BA067 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		451B5F8D0C1C802AA0E33D24 /* WatchGPTIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchGPTIntents.swift; sourceTree = "<group>"; };
 		48F0396631101BBBCB76335B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5F864EA057EA60633EE8481E /* WatchGPT.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WatchGPT.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		677BADE0A0BD3365B19B9858 /* WatchGPTPhone.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = WatchGPTPhone.xcconfig; sourceTree = "<group>"; };
+		67B434697396B600E9249C2A /* WatchGPTLogicTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = WatchGPTLogicTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		81BC46B8440A08E21473EEA2 /* RealtimeTranscriptBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeTranscriptBubble.swift; sourceTree = "<group>"; };
 		82FECC0B63A41BCA479439C3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		838EA55A18A2265A96D18A1F /* LiquidGlass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlass.swift; sourceTree = "<group>"; };
 		8A48F5A9A2DC5A8B5A51E3E5 /* LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE.txt; sourceTree = "<group>"; };
+		8F303F6B717A981BA5207E1E /* OpenAIParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIParsingTests.swift; sourceTree = "<group>"; };
 		9912439D9B78572153C63A6F /* WatchGPTPhoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchGPTPhoneApp.swift; sourceTree = "<group>"; };
 		A19B334EEB454E1D4B469D02 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A2CD629AA5CFB5B1F01DCBF8 /* PhoneConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneConfiguration.swift; sourceTree = "<group>"; };
@@ -72,10 +94,12 @@
 		BD120FC35747E9FE57304295 /* PhoneContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneContentView.swift; sourceTree = "<group>"; };
 		BE54F03B8426E24FDD2E876C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		CE733AC4756CF4216F3721D7 /* RealtimeMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeMessages.swift; sourceTree = "<group>"; };
+		CF4BB1822B1F1EDC7D185D23 /* AudioSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSupport.swift; sourceTree = "<group>"; };
 		D3393270746CA1B5AEA63EC5 /* RealtimeTranscriptLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeTranscriptLine.swift; sourceTree = "<group>"; };
 		D62AAF18566800FF16CF3D3F /* WatchGPT.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WatchGPT.entitlements; sourceTree = "<group>"; };
 		F5E089FF3E8068FA7D6E698A /* RealtimeAudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeAudioIO.swift; sourceTree = "<group>"; };
 		F606194901DBCEB14E299D04 /* RealtimeVoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeVoiceSession.swift; sourceTree = "<group>"; };
+		FE56B393EAA77578F13D9FCA /* SharedLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLogicTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -104,6 +128,7 @@
 				D62AAF18566800FF16CF3D3F /* WatchGPT.entitlements */,
 				196D6B02407CD5B3265C6B0C /* WatchGPTApp.swift */,
 				B78C3F12425C258594AA4D9B /* Config */,
+				7106747A916FDEFD413D1579 /* Intents */,
 				00CF1D3972D8ACC5981E3D5C /* Models */,
 				2FD7D65E652D2DBFA0DE3729 /* Services */,
 				C93512DBBD1E7875AC5DA152 /* Support */,
@@ -135,12 +160,30 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		687F8E363750176D205222CF /* Logic */ = {
+			isa = PBXGroup;
+			children = (
+				8F303F6B717A981BA5207E1E /* OpenAIParsingTests.swift */,
+				FE56B393EAA77578F13D9FCA /* SharedLogicTests.swift */,
+			);
+			name = Logic;
+			path = Tests/Logic;
+			sourceTree = "<group>";
+		};
 		7019D606142AA8FDA26FDA4A /* Resources */ = {
 			isa = PBXGroup;
 			children = (
 				8A48F5A9A2DC5A8B5A51E3E5 /* LICENSE.txt */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		7106747A916FDEFD413D1579 /* Intents */ = {
+			isa = PBXGroup;
+			children = (
+				451B5F8D0C1C802AA0E33D24 /* WatchGPTIntents.swift */,
+			);
+			path = Intents;
 			sourceTree = "<group>";
 		};
 		82B1D3A3339116F3DC9D5DDF /* Views */ = {
@@ -156,6 +199,8 @@
 		B2AF3422E909A03820B993F6 /* Support */ = {
 			isa = PBXGroup;
 			children = (
+				38C4683EE196D5ACC0E06061 /* KeychainStore.swift */,
+				348A37055D347EB6B3822BD8 /* OpenAIParsing.swift */,
 				A2CD629AA5CFB5B1F01DCBF8 /* PhoneConfiguration.swift */,
 			);
 			path = Support;
@@ -173,6 +218,7 @@
 			isa = PBXGroup;
 			children = (
 				5F864EA057EA60633EE8481E /* WatchGPT.app */,
+				67B434697396B600E9249C2A /* WatchGPTLogicTests.xctest */,
 				0D21AA0391762E8C773687FA /* WatchGPTPhone.app */,
 			);
 			name = Products;
@@ -205,6 +251,7 @@
 		F1D95191CD50BC6379682CD5 = {
 			isa = PBXGroup;
 			children = (
+				687F8E363750176D205222CF /* Logic */,
 				FF5C4CCCCFB9CD0CAACB1102 /* Shared */,
 				3343748D4558C94F3EEEBC00 /* WatchGPT */,
 				472078DE2DBDDE24F547A262 /* WatchGPTPhone */,
@@ -215,6 +262,8 @@
 		FF5C4CCCCFB9CD0CAACB1102 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				CF4BB1822B1F1EDC7D185D23 /* AudioSupport.swift */,
+				838EA55A18A2265A96D18A1F /* LiquidGlass.swift */,
 				CE733AC4756CF4216F3721D7 /* RealtimeMessages.swift */,
 			);
 			path = Shared;
@@ -223,6 +272,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		076E207DF664F2073BFF68AC /* WatchGPTLogicTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EB69FC8DC20F63B48AE7C8AD /* Build configuration list for PBXNativeTarget "WatchGPTLogicTests" */;
+			buildPhases = (
+				025BADBC8A94E10F633EA93F /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B36ED3AA57D77F274D86F6BB /* PBXTargetDependency */,
+			);
+			name = WatchGPTLogicTests;
+			packageProductDependencies = (
+			);
+			productName = WatchGPTLogicTests;
+			productReference = 67B434697396B600E9249C2A /* WatchGPTLogicTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		78D8D1D3264018B7CBFF21D7 /* WatchGPTPhone */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C682EA02394898BBEF0BA309 /* Build configuration list for PBXNativeTarget "WatchGPTPhone" */;
@@ -270,10 +337,15 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					076E207DF664F2073BFF68AC = {
+						DevelopmentTeam = 3ML6V62AF5;
+					};
 					78D8D1D3264018B7CBFF21D7 = {
+						DevelopmentTeam = 3ML6V62AF5;
 						ProvisioningStyle = Automatic;
 					};
 					9F5EA48E4FFD27327D981664 = {
+						DevelopmentTeam = 3ML6V62AF5;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -288,11 +360,11 @@
 			);
 			mainGroup = F1D95191CD50BC6379682CD5;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				9F5EA48E4FFD27327D981664 /* WatchGPT */,
+				076E207DF664F2073BFF68AC /* WatchGPTLogicTests */,
 				78D8D1D3264018B7CBFF21D7 /* WatchGPTPhone */,
 			);
 		};
@@ -319,10 +391,23 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		025BADBC8A94E10F633EA93F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				86A240FD58BBC7B3E7519497 /* OpenAIParsingTests.swift in Sources */,
+				5AC2117ADE8560027F1CCD10 /* SharedLogicTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B9E15359719778B503F5ACC1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				09555870C98FE239BE989C57 /* AudioSupport.swift in Sources */,
+				A52A905EED17D554B29F91AA /* KeychainStore.swift in Sources */,
+				73FE49C1507849E18CC2E767 /* LiquidGlass.swift in Sources */,
+				A8FA9F4A6ED94F10D2508913 /* OpenAIParsing.swift in Sources */,
 				3EDF02182749E58B0BF35758 /* PhoneConfiguration.swift in Sources */,
 				E9A358AB3484002590C7F9BA /* PhoneContentView.swift in Sources */,
 				98FFB2E31BC1993194609AC0 /* PhoneRealtimeBridge.swift in Sources */,
@@ -337,7 +422,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				7899F52E30183A263869FF3C /* AppConfiguration.swift in Sources */,
+				5ED86CC147ACEF396A076A16 /* AudioSupport.swift in Sources */,
 				679D5C75E78A16405BD248B2 /* ContentView.swift in Sources */,
+				CDB294B281AD7D432F123F2E /* LiquidGlass.swift in Sources */,
 				E3FED1874FF09F50E1F44A9F /* RealtimeAudioIO.swift in Sources */,
 				308F22188D6E829FEE261848 /* RealtimeMessages.swift in Sources */,
 				5FB6FF8705F1B750BF68FE17 /* RealtimeTranscriptBubble.swift in Sources */,
@@ -345,6 +432,7 @@
 				0AFD49DA55FCD9534DA43327 /* RealtimeVoiceSession.swift in Sources */,
 				5267D89DA87F8300DBA942E6 /* SettingsView.swift in Sources */,
 				7416E1F08EF325350A958D15 /* WatchGPTApp.swift in Sources */,
+				F31BE484BA50BB57497ED703 /* WatchGPTIntents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -355,6 +443,11 @@
 			isa = PBXTargetDependency;
 			target = 9F5EA48E4FFD27327D981664 /* WatchGPT */;
 			targetProxy = 9D01ACCD590A40176326AD29 /* PBXContainerItemProxy */;
+		};
+		B36ED3AA57D77F274D86F6BB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 78D8D1D3264018B7CBFF21D7 /* WatchGPTPhone */;
+			targetProxy = CFA6266F86715F3365EDD21A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -418,6 +511,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 3ML6V62AF5;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -505,6 +599,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 3ML6V62AF5;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -525,6 +620,24 @@
 				WATCHOS_DEPLOYMENT_TARGET = 11.0;
 			};
 			name = Release;
+		};
+		BA4D5366F0D5CBEE7B9933D2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.watchgpt.logictests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WatchGPTPhone.app/WatchGPTPhone";
+			};
+			name = Debug;
 		};
 		CE73578D11EF0443B168F2CF /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -568,6 +681,24 @@
 			};
 			name = Debug;
 		};
+		EEA061BAA126AC09C05112CF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.watchgpt.logictests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WatchGPTPhone.app/WatchGPTPhone";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -594,6 +725,15 @@
 			buildConfigurations = (
 				D34AF350EB64ED74449156E7 /* Debug */,
 				CE73578D11EF0443B168F2CF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EB69FC8DC20F63B48AE7C8AD /* Build configuration list for PBXNativeTarget "WatchGPTLogicTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA4D5366F0D5CBEE7B9933D2 /* Debug */,
+				EEA061BAA126AC09C05112CF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

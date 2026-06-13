@@ -99,7 +99,7 @@ struct PhoneContentView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
         .padding(.horizontal, 18)
-        .background {
+        .glassSurface(in: RoundedRectangle(cornerRadius: 22, style: .continuous), tint: heroTint) {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
                 .overlay(alignment: .top) {
@@ -252,7 +252,7 @@ struct PhoneContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
-        .background {
+        .glassSurface(in: RoundedRectangle(cornerRadius: 12, style: .continuous), tint: tint, interactive: true) {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
                 .overlay {
@@ -263,10 +263,10 @@ struct PhoneContentView: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(tint.opacity(0.16), lineWidth: 0.5)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(tint.opacity(0.16), lineWidth: 0.5)
+                }
         }
     }
 
@@ -296,7 +296,7 @@ struct PhoneContentView: View {
 
             if isDiagnosticsExpanded {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                    diagnostic("Mode", PhoneConfiguration.defaultVoiceEngine.displayName)
+                    diagnostic("Mode", bridge.isActive ? bridge.activeEngine.displayName : PhoneConfiguration.defaultVoiceEngine.displayName)
                     diagnostic("Turn-taking", PhoneConfiguration.realtimeEagerness.displayName)
                     diagnostic("Last event", bridge.lastOpenAIEventType)
                     diagnostic("Reconnects", "\(bridge.reconnectCount)")
@@ -313,7 +313,10 @@ struct PhoneContentView: View {
             }
         }
         .padding(12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .glassSurface(in: RoundedRectangle(cornerRadius: 14, style: .continuous)) {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        }
     }
 
     // MARK: - Transcripts
@@ -523,7 +526,9 @@ struct PhoneTranscriptDetailView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(.thinMaterial, in: Capsule())
+                .glassSurface(in: Capsule()) {
+                    Capsule().fill(.thinMaterial)
+                }
                 .padding(.bottom, 20)
                 .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
@@ -586,7 +591,10 @@ struct PhoneTranscriptDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .glassSurface(in: RoundedRectangle(cornerRadius: 14, style: .continuous)) {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        }
     }
 
     private func usageTile(_ label: String, _ value: String) -> some View {
@@ -659,10 +667,12 @@ struct PhoneTranscriptDetailView: View {
                     .foregroundStyle(isUser ? Color.white : Color.primary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
-                    .background(
-                        bubbleFill(isUser: isUser),
-                        in: bubbleShape(isUser: isUser)
-                    )
+                    .glassSurface(
+                        in: bubbleShape(isUser: isUser),
+                        tint: isUser ? .accentColor : nil
+                    ) {
+                        bubbleShape(isUser: isUser).fill(bubbleFill(isUser: isUser))
+                    }
                     .textSelection(.enabled)
 
                 Text(line.date, style: .time)

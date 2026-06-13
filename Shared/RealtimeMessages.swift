@@ -4,6 +4,7 @@ enum RealtimeMessageType: String {
     case start
     case stop
     case commit
+    case cancelTurn
     case audioFromWatch
     case audioFromPhone
     case ready
@@ -47,6 +48,7 @@ enum RealtimeMessageKey {
     static let text = "x"
     static let automaticTurnDetection = "a"
     static let voiceEngine = "e"
+    static let micSensitivity = "m"
 }
 
 enum RealtimeMessage {

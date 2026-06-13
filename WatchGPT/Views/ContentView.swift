@@ -73,10 +73,13 @@ struct ContentView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.92))
                     .frame(width: 30, height: 30)
-                    .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay {
+                    .glassSurface(in: RoundedRectangle(cornerRadius: 10, style: .continuous), interactive: true) {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
+                            .fill(.white.opacity(0.12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
+                            }
                     }
             }
             .buttonStyle(.plain)
@@ -95,10 +98,13 @@ struct ContentView: View {
         }
         .foregroundStyle(session.isCompanionReachable ? .green : .orange)
         .frame(width: 34, height: 24)
-        .background((session.isCompanionReachable ? Color.green : Color.orange).opacity(0.14), in: Capsule())
-        .overlay {
+        .glassSurface(in: Capsule(), tint: session.isCompanionReachable ? .green : .orange) {
             Capsule()
-                .strokeBorder((session.isCompanionReachable ? Color.green : Color.orange).opacity(0.22), lineWidth: 0.5)
+                .fill((session.isCompanionReachable ? Color.green : Color.orange).opacity(0.14))
+                .overlay {
+                    Capsule()
+                        .strokeBorder((session.isCompanionReachable ? Color.green : Color.orange).opacity(0.22), lineWidth: 0.5)
+                }
         }
         .accessibilityLabel(session.connectionStatusText)
     }
@@ -148,7 +154,10 @@ struct ContentView: View {
             }
             .scrollIndicators(.hidden)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
+            .glassSurface(
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                tint: session.isConnected ? statusTint.opacity(0.5) : nil
+            ) {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(.white.opacity(0.045))
                     .overlay {
@@ -209,7 +218,9 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, minHeight: 38)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 10)
-                .background(.white.opacity(0.045), in: Capsule())
+                .glassSurface(in: Capsule()) {
+                    Capsule().fill(.white.opacity(0.045))
+                }
 
             if session.isConnected {
                 Button {
@@ -219,10 +230,13 @@ struct ContentView: View {
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 38, height: 38)
-                        .background(.red.gradient, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                        .overlay {
+                        .glassSurface(in: RoundedRectangle(cornerRadius: 13, style: .continuous), tint: .red, interactive: true) {
                             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                .strokeBorder(.white.opacity(0.28), lineWidth: 0.6)
+                                .fill(.red.gradient)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                        .strokeBorder(.white.opacity(0.28), lineWidth: 0.6)
+                                }
                         }
                 }
                 .buttonStyle(.plain)
@@ -416,23 +430,38 @@ private struct VoiceOrb: View {
                     .opacity(isLuminanceReduced ? 0.10 : (isActive ? 0.34 : 0.16))
                     .scaleEffect(ringScale)
 
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(activeGradient)
-                    .shadow(color: activeGlow, radius: glowRadius)
+                if #available(watchOS 26.0, *), !isLuminanceReduced {
+                    // Real Liquid Glass tile, tinted by the phase color. Glass
+                    // provides its own specular highlight and edge, so the hand-
+                    // painted white gloss/stroke below is dropped on 26.
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(.clear)
+                        .glassEffect(
+                            .regular.tint(glowColor.opacity(isActive ? 0.55 : 0.35)).interactive(),
+                            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        )
+                        .shadow(color: activeGlow, radius: glowRadius)
+                } else {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(activeGradient)
+                        .shadow(color: activeGlow, radius: glowRadius)
+                }
 
                 if !isLuminanceReduced {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(
-                            RadialGradient(
-                                colors: [.white.opacity(0.66), .white.opacity(0.05), .clear],
-                                center: .topLeading,
-                                startRadius: 2,
-                                endRadius: 42
+                    if #unavailable(watchOS 26.0) {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(
+                                RadialGradient(
+                                    colors: [.white.opacity(0.66), .white.opacity(0.05), .clear],
+                                    center: .topLeading,
+                                    startRadius: 2,
+                                    endRadius: 42
+                                )
                             )
-                        )
 
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(.white.opacity(0.22), lineWidth: 0.8)
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .strokeBorder(.white.opacity(0.22), lineWidth: 0.8)
+                    }
 
                     if phase == .listening {
                         ForEach(0..<3, id: \.self) { index in

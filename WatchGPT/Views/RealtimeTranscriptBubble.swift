@@ -29,11 +29,13 @@ struct RealtimeTranscriptBubble: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(bubbleBackground)
-            .clipShape(bubbleShape)
-            .overlay {
-                bubbleShape
-                    .strokeBorder(.white.opacity(line.speaker == .user ? 0.18 : 0.08), lineWidth: 0.5)
+            .glassSurface(in: bubbleShape, tint: line.speaker == .user ? .blue : nil) {
+                bubbleBackground
+                    .clipShape(bubbleShape)
+                    .overlay {
+                        bubbleShape
+                            .strokeBorder(.white.opacity(line.speaker == .user ? 0.18 : 0.08), lineWidth: 0.5)
+                    }
             }
             .shadow(color: bubbleShadow, radius: 8, y: 3)
     }

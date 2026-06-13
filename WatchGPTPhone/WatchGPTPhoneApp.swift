@@ -4,6 +4,7 @@ import SwiftUI
 struct WatchGPTPhoneApp: App {
     init() {
         PhoneConfiguration.registerDefaults()
+        PhoneConfiguration.migrateAPIKeyToKeychainIfNeeded()
         PhoneRealtimeBridge.shared.activate()
     }
 

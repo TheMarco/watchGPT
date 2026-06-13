@@ -70,7 +70,21 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     private let responseTimeout: TimeInterval = 12
     private var lastActivityAt = Date()
     private let idleTimeoutSeconds: TimeInterval = 30
-    private var awaitingAssistantResponse = false
+    // Upper bound on how long we wait for the assistant before assuming the turn
+    // was lost. Generous so Think Mode with high reasoning + web search can run
+    // long without the idle watchdog killing the session mid-thought.
+    private let maxAssistantWaitSeconds: TimeInterval = 90
+    private var awaitingAssistantResponse = false {
+        didSet {
+            if awaitingAssistantResponse, !oldValue {
+                assistantWaitStartedAt = Date()
+            } else if !awaitingAssistantResponse {
+                assistantWaitStartedAt = nil
+            }
+        }
+    }
+    private var assistantWaitStartedAt: Date?
+    private var lastAudioLevelSentAt = Date.distantPast
 
     override init() {
         wcSession = WCSession.isSupported() ? WCSession.default : nil
@@ -123,6 +137,10 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         refreshCompanionState()
         guard wcSession.isReachable else {
             errorMessage = RealtimeVoiceSessionError.companionUnreachable.localizedDescription
+            // A single failure haptic here is safe: no voice session is running,
+            // so it can't destabilize one (the documented "no haptics in-session"
+            // rule still holds). It tells the user the tap registered.
+            WKInterfaceDevice.current().play(.failure)
             return
         }
 
@@ -144,7 +162,9 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             )
         )
         audioIO.setInputGain(AppConfiguration.micSensitivity.inputGain)
+        audioIO.setOutputVolume(AppConfiguration.outputVolume.gain)
         lastActivityAt = Date()
+        lastAudioLevelSentAt = .distantPast
         startWatchdog()
         sendStartToPhone()
     }
@@ -155,6 +175,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
 
     func prewarmAudio() {
         audioIO.setInputGain(AppConfiguration.micSensitivity.inputGain)
+        audioIO.setOutputVolume(AppConfiguration.outputVolume.gain)
         audioIO.prepare()
     }
 
@@ -190,7 +211,8 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     private func sendStartToPhone() {
         wcSession?.sendMessage(
             RealtimeMessage.encode(.start, payload: [
-                RealtimeMessageKey.automaticTurnDetection: automaticConversationEnabledForSession
+                RealtimeMessageKey.automaticTurnDetection: automaticConversationEnabledForSession,
+                RealtimeMessageKey.micSensitivity: AppConfiguration.micSensitivity.rawValue
             ]),
             replyHandler: nil,
             errorHandler: { [weak self] error in
@@ -211,6 +233,18 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
 
     func beginTurn() {
         noteActivity()
+
+        // In Think Mode a tap must also abort any in-flight turn on the phone
+        // (transcribe → think → stream speech). Fast Mode's realtime model
+        // handles interruption itself, so this is gpt5-only. Harmless no-op when
+        // no turn is running.
+        if voiceEngineForSession == .gpt5 {
+            wcSession?.sendMessage(
+                RealtimeMessage.encode(.cancelTurn),
+                replyHandler: nil,
+                errorHandler: nil
+            )
+        }
 
         if isAutomaticConversationEnabled {
             recoverToConnected()
@@ -272,8 +306,21 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             errorMessage = "No reply from iPhone. The realtime session may have dropped — tap stop, then start to reconnect."
         }
 
+        // A turn is in flight if the assistant is being awaited (Think Mode
+        // transcribe/think/speak, or a Fast Mode web-search round-trip). Don't
+        // let the idle watchdog end the session during that window — but cap it
+        // so a genuinely lost turn still surfaces an error and frees the timer.
+        let awaitingTurn = awaitingAssistantResponse || awaitingResponseSince != nil
+        if awaitingAssistantResponse,
+           let waitStart = assistantWaitStartedAt,
+           Date().timeIntervalSince(waitStart) > maxAssistantWaitSeconds
+        {
+            awaitingAssistantResponse = false
+            errorMessage = "No reply from iPhone — the session may have dropped. Tap stop, then start to reconnect."
+        }
+
         if phase == .listening || phase == .connected {
-            if Date().timeIntervalSince(lastActivityAt) > idleTimeoutSeconds {
+            if !awaitingTurn, Date().timeIntervalSince(lastActivityAt) > idleTimeoutSeconds {
                 stop()
                 return
             }
@@ -395,6 +442,9 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             }
             stop()
         case .connectionStatus:
+            // Phone progress heartbeats (e.g. "Transcribing", "Thinking",
+            // "Searching") double as keep-alive pings during a long turn.
+            noteActivity()
             if let text = message[RealtimeMessageKey.text] as? String {
                 connectionStatusText = text
             }
@@ -459,13 +509,21 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         }
 
         wcSession.sendMessageData(data, replyHandler: nil, errorHandler: nil)
-        wcSession.sendMessage(
-            RealtimeMessage.encode(.watchAudioLevel, payload: [
-                RealtimeMessageKey.text: String(format: "%.4f", inputPeak)
-            ]),
-            replyHandler: nil,
-            errorHandler: nil
-        )
+
+        // The mic level only drives a diagnostics readout on the phone, so it
+        // doesn't need to ship with every ~0.2 s audio chunk. Throttling it keeps
+        // the WCSession control channel from competing with audio delivery.
+        let now = Date()
+        if now.timeIntervalSince(lastAudioLevelSentAt) >= 0.4 {
+            lastAudioLevelSentAt = now
+            wcSession.sendMessage(
+                RealtimeMessage.encode(.watchAudioLevel, payload: [
+                    RealtimeMessageKey.text: String(format: "%.4f", inputPeak)
+                ]),
+                replyHandler: nil,
+                errorHandler: nil
+            )
+        }
     }
 
     private func playAssistantAudio(_ audio: Data, prefersOneShotPlayer: Bool) {

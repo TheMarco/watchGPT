@@ -1,12 +1,14 @@
 name: WatchGPT
 options:
   bundleIdPrefix: dev.watchgpt
+  objectVersion: 63
   deploymentTarget:
     watchOS: "11.0"
     iOS: "17.0"
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: 3ML6V62AF5
 targets:
   WatchGPT:
     type: application
@@ -57,12 +59,28 @@ targets:
         MARKETING_VERSION: 0.1.0
         ENABLE_PREVIEWS: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+  WatchGPTLogicTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Tests/Logic
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.watchgpt.logictests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: WatchGPTPhone
 schemes:
   WatchGPTPhone:
     build:
       targets:
         WatchGPTPhone: all
         WatchGPT: all
+        WatchGPTLogicTests: [test]
+    test:
+      targets:
+        - WatchGPTLogicTests
     run:
       config: Debug
       executable: WatchGPTPhone

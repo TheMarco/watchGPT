@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PhoneSettingsView: View {
-    @AppStorage(PhoneConfiguration.openAIAPIKeyKey) private var apiKey = PhoneConfiguration.defaultOpenAIAPIKey
+    @State private var apiKey = PhoneConfiguration.openAIAPIKey
     @AppStorage(PhoneConfiguration.defaultVoiceEngineKey) private var defaultEngine = VoiceEngine.realtime.rawValue
     @AppStorage(PhoneConfiguration.realtimeVoiceKey) private var realtimeVoice = PhoneConfiguration.defaultRealtimeVoice
     @AppStorage(PhoneConfiguration.thinkVoiceKey) private var thinkVoice = PhoneConfiguration.defaultThinkVoice
@@ -16,6 +16,9 @@ struct PhoneSettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.system(.body, design: .monospaced))
+                    .onChange(of: apiKey) { _, newValue in
+                        PhoneConfiguration.setOpenAIAPIKey(newValue)
+                    }
 
                 Button("Reset to build default") {
                     apiKey = PhoneConfiguration.defaultOpenAIAPIKey
@@ -24,7 +27,7 @@ struct PhoneSettingsView: View {
             } header: {
                 Text("OpenAI API key")
             } footer: {
-                Text("Stored only on this iPhone. Never sent to the watch — the iPhone holds the WebSocket to OpenAI and relays audio to the watch over Bluetooth.")
+                Text("Stored in the iPhone Keychain — never written to backups in plaintext and never sent to the watch. The iPhone holds the WebSocket to OpenAI and relays audio to the watch over Bluetooth.")
             }
 
             Section {
@@ -347,10 +350,13 @@ struct PhoneHelpView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
+        .glassSurface(in: RoundedRectangle(cornerRadius: 18, style: .continuous)) {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(topic.tint.opacity(0.18), lineWidth: 0.8)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(topic.tint.opacity(0.18), lineWidth: 0.8)
+                }
         }
     }
 
@@ -369,7 +375,10 @@ struct PhoneHelpView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassSurface(in: RoundedRectangle(cornerRadius: 18, style: .continuous)) {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        }
     }
 }
 

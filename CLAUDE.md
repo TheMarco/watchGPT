@@ -24,6 +24,7 @@ Repo: https://github.com/TheMarco/watchGPT.
 - **AOD-neutral main button**: when `@Environment(\.isLuminanceReduced)` is true, the button switches to a grayscale gradient and a neutral `waveform` glyph; the audio-reactive halo behind it is muted. Lifting the wrist clears it via the existing `scenePhase`-driven resync.
 - **Audio-reactive halo**: `RealtimeVoiceSession.lastInputPeak` is published per mic chunk and feeds the radial blur behind the main button (scale, opacity, blur radius all respond).
 - **Cohesive visual system**: the watch uses a rounded-square phase button, round watch artwork in idle/ready states, iPhone reachability pill, premium transcript container, and matching chat bubbles. The iPhone companion uses transparent brand artwork in the hero/About header, layered gradient cards, visible Help/About shortcuts, and a colorful card-based Help screen.
+- **Liquid Glass (iOS 26 / watchOS 26)**: standard chrome (nav bars, toolbars, `List`, `Form`, sheets) adopts Liquid Glass automatically because the app is built with the 26 SDK and does not set `UIDesignRequiresCompatibility`. The custom-drawn surfaces were additionally converted to real glass via `glassSurface` (phone hero/diagnostics/action rows/Help cards/chat bubbles/copied toast; watch orb base/reachability pill/transcript container/gear+stop buttons/controls hint/chat bubbles). Every glass call is `#available(iOS 26 / watchOS 26)`-guarded with the prior look kept as the fallback, since the deployment floor is iOS 17 / watchOS 11. Nested elements inside a glass card (metric/usage/diagnostic tiles, the metrics strip) stay as plain fills on purpose — avoid glass-on-glass. The bold gradient Help hero banner is intentionally left non-glass as brand identity.
 - Haptics were intentionally removed from the watch voice session — destabilizing.
 - The phone companion stores chat transcripts as separate sessions with generated titles, one-sentence summaries, and usage metadata. The detail view is iMessage-style chat bubbles. Native swipe-to-delete with no confirmation; the trash icon inside the detail view confirms before deleting.
 - The phone companion has a collapsible diagnostics panel on the main screen. It starts closed and expands to show mode, Fast Mode turn-taking, last OpenAI event, reconnects, mic peak, and watch chunks.
@@ -47,7 +48,7 @@ The watch shows a large rounded-square main voice button.
 - In push-to-talk mode: hold the main button to talk, release to commit.
 - Tap-to-interrupt during `.speaking` always works (it routes through `beginTurn` → `recoverToConnected`, clearing the playback echo guard and `awaitingAssistantResponse`).
 - The watch top bar shows the title, an iPhone reachability pill, and the Settings button.
-- Settings on the watch cover interaction/runtime: hands-free, mic sensitivity, voice barge-in, workout keep-alive, and clear chat. Model-facing choices live on the iPhone: default mode, per-mode voice, Fast Mode VAD eagerness, Think Mode reasoning, and language.
+- Settings on the watch cover interaction/runtime: hands-free, mic sensitivity, reply volume, voice barge-in, workout keep-alive, and clear chat. Model-facing choices live on the iPhone: default mode, per-mode voice, Fast Mode VAD eagerness, Think Mode reasoning, and language.
 
 Watch phase machine:
 
@@ -64,10 +65,11 @@ disconnected -> connecting -> connected <-> listening
   - `WatchGPTApp.swift` - app entry, registers defaults.
   - `Views/ContentView.swift` - rounded-square main button UI (TimelineView-driven, AOD-aware, audio-reactive halo/ripples, `WatchBrandIcon` in idle/ready states), reachability/status top bar, transcript view, stop/settings controls.
   - `Views/RealtimeTranscriptBubble.swift` - watch transcript bubble styling shared by live/final transcript lines.
-  - `Views/SettingsView.swift` - hands-free, mic sensitivity, voice barge-in, workout keep-alive, clear chat.
+  - `Views/SettingsView.swift` - hands-free, mic sensitivity, reply volume, voice barge-in, workout keep-alive, clear chat.
   - `Services/RealtimeVoiceSession.swift` - watch-side phase machine and `WCSession` client. Owns the idle watchdog, the playback-echo guard, the `awaitingAssistantResponse` flag, and `lastInputPeak` for the halo.
-  - `Services/RealtimeAudioIO.swift` - watch mic capture and playback. 24 kHz PCM16 mono. Uses `.voiceChat`, enables voice processing, exposes `prepare()` for cold-start prewarm and a settable `inputGain` for the sensitivity preset.
-  - `Support/AppConfiguration.swift` - watch settings keys/defaults plus the `MicSensitivity` enum. No API key on watch.
+  - `Services/RealtimeAudioIO.swift` - watch mic capture and playback. 24 kHz PCM16 mono. Uses `.voiceChat`, enables voice processing, exposes `prepare()` for cold-start prewarm. Mic resampling uses `AVAudioConverter` (proper anti-aliasing, not nearest-neighbor). `inputGain` (sensitivity) and `outputGain` (reply volume) are lock-guarded (read once per render pass) and both paths soft-limit with `tanhf` instead of hard-clipping.
+  - `Support/AppConfiguration.swift` - watch settings keys/defaults (hands-free, mic sensitivity, output volume, barge-in, workout runtime). `MicSensitivity`/`OutputVolume` now live in `Shared/AudioSupport.swift`. No API key on watch.
+  - `Intents/WatchGPTIntents.swift` - minimal `AppIntent` + `AppShortcutsProvider` that opens the watch app (Siri/Shortcuts entry point).
   - `Info.plist` - mic usage, HealthKit usage, `WKBackgroundModes` for audio and workout processing.
   - `WatchGPT.entitlements` - HealthKit entitlement.
   - `Assets.xcassets/AppIcon.appiconset` - watch icon renditions generated from root `icon-watch.png`.
@@ -77,9 +79,14 @@ disconnected -> connecting -> connected <-> listening
   - `Views/PhoneContentView.swift` - app-icon hero status card with TimelineView pulse, Help/About shortcuts, collapsible diagnostics panel, transcript list (insetGrouped, leading badges), iMessage-style chat-bubble detail view with usage metadata, and shared `PhoneAppIconImage`.
   - `Views/PhoneSettingsView.swift` - OpenAI API key, default mode, per-mode voice, Fast Mode turn-taking, Think Mode reasoning, language picker, colorful `PhoneHelpView`, and `PhoneAboutView`.
   - `Services/PhoneRealtimeBridge.swift` - phone-side bridge for both engines, transcript persistence, OpenAI calls, keep-alive, and Fast Mode tool execution (`runWebSearchCall` via OpenAI Responses API).
-  - `Support/PhoneConfiguration.swift` - model names, OpenAI API key, voice config, endpoint builders, language enum, effective-instructions composition.
+  - `Support/PhoneConfiguration.swift` - model names, OpenAI API key (Keychain-backed, cached), voice config, endpoint builders, language enum, effective-instructions composition.
+  - `Support/KeychainStore.swift` - minimal generic-password Keychain wrapper for the OpenAI API key.
+  - `Support/OpenAIParsing.swift` - pure, non-isolated helpers: `OpenAIResponseParsing` (Responses output-text + web_search_call count), `RealtimeErrorClassifier` (fatal vs non-fatal), `ThinkTranscriptFilter` (hallucination filter). Unit tested.
   - `Config/WatchGPTPhone.xcconfig` - committed; includes gitignored `LocalSecrets.xcconfig`.
-- `Shared/RealtimeMessages.swift` - compact message envelope shared by both targets, plus the `VoiceEngine` enum (raw values `realtime`/`gpt5`, displayNames Fast Mode/Think Mode).
+- `Tests/Logic/` - XCTest bundle (`WatchGPTLogicTests`, host = phone app, `@testable import WatchGPTPhone`) covering the pure logic above plus the message envelope, WAV builder, and sensitivity/volume mappings.
+- `Shared/RealtimeMessages.swift` - compact message envelope shared by both targets, plus the `VoiceEngine` enum (raw values `realtime`/`gpt5`, displayNames Fast Mode/Think Mode). Message types now include `cancelTurn`; keys include `micSensitivity`.
+- `Shared/AudioSupport.swift` - shared audio helpers: `PCMWAV` (WAV builder), the `Data` little-endian/ASCII helpers, and the `MicSensitivity` (input gain + Think VAD threshold) and `OutputVolume` (playback gain) enums. Both enums live here so the phone can map the watch's preset to a VAD threshold.
+- `Shared/LiquidGlass.swift` - `View.glassSurface(in:tint:interactive:fallback:)` and `GlassGroup`. Applies real Liquid Glass (`glassEffect`/`GlassEffectContainer`) on iOS 26 / watchOS 26 and falls back to the supplied prior background below those versions. Used to convert the app's custom-drawn surfaces (cards, bubbles, pills, the watch orb base) to glass without regressing the iOS 17 / watchOS 11 floor.
 - `WatchGPT/Assets.xcassets/PhoneAppIcon.appiconset` - phone icon renditions generated from root `icon.png`.
 - `WatchGPT/Assets.xcassets/BrandIcon.imageset` - in-app phone/general brand artwork copied from root `icon.png`.
 - `project.yml` - XcodeGen spec. Regenerate after structural target/file changes.
@@ -121,8 +128,12 @@ Watch mic PCM16 -> WCSession data -> phone local VAD
 - TTS voice uses the separate Think Mode voice picker and falls back to `coral`.
 - Web search: the Responses API call passes `tools: [{type: "web_search"}]` and `tool_choice: "auto"`. OpenAI runs the search, fetch, and synthesis server-side; we still parse `output_text` (or fall back to walking `output[].content[].text`).
 - Think Mode is intentionally one turn at a time:
-  - listen → transcribe → think → synthesize → speak → return to listening
-- Stability hardening: speech-start debounce, short-burst dropping, chunked TTS forwarding via `sendAudioToWatchInChunks` with paced 8 ms gaps.
+  - listen → transcribe → think → stream speech → speak → return to listening
+- TTS is **streamed**: `streamSpeechToWatch` reads the `/v1/audio/speech` body incrementally and forwards Int16-aligned, paced (8 ms) chunks so the watch starts speaking before synthesis finishes. (Replaced the old buffer-everything `synthesizeSpeech` + `sendAudioToWatchInChunks`.)
+- A tap on the watch during a Think turn sends `.cancelTurn`; the phone's `cancelRegularTurn()` cancels the in-flight `regularTurnTask` (and its URLSession calls).
+- The local VAD threshold (`regularSpeechThreshold`) is set from the watch's mic-sensitivity preset (sent in the `.start` payload → `MicSensitivity.thinkModeVADThreshold`).
+- Transcripts matching `ThinkTranscriptFilter.isLikelyHallucination` (Whisper silence artifacts like "Thank you") are dropped instead of spending a turn. Server-side `web_search_call`s are counted into `webSearchCount`.
+- Stability hardening: speech-start debounce, short-burst dropping, streamed/paced TTS forwarding.
 
 ## Transcript History
 
@@ -155,7 +166,11 @@ This is the best currently implemented path for keeping watch execution alive. I
 
 ## Important Invariants
 
-- The OpenAI API key is the only required key, and it lives only on the iPhone. Both modes share the same OpenAI-hosted `web_search` backend — no third-party search/data keys.
+- The OpenAI API key is the only required key, and it lives only on the iPhone, in the **Keychain** (`KeychainStore`, via `PhoneConfiguration.openAIAPIKey`/`setOpenAIAPIKey`). A one-time `migrateAPIKeyToKeychainIfNeeded()` moves any legacy plaintext UserDefaults key over and scrubs it. The build-default key (baked from xcconfig into Info.plist) is still the fallback. Both modes share the same OpenAI-hosted `web_search` backend — no third-party search/data keys.
+- All outbound OpenAI WebSocket frames go through one ordered async send queue (`startSendQueue`/`sendOpenAIEvent` yields to a single consumer). Do NOT send via ad-hoc `Task { webSocket.send(...) }` — protocol-ordered pairs (function_call_output → response.create, commit → response.create) depend on this ordering.
+- The phone does NOT tear down a live session on a momentary `WCSession` reachability dip; `sessionReachabilityDidChange` debounces ~4 s (`reachabilityLossTask`) before `stopRealtime()`.
+- Recoverable OpenAI realtime `error` events (no-active-response, commit-empty, etc.) must NOT stop the watch session. `RealtimeErrorClassifier.isNonFatal` is a conservative allow-list; unknown errors still tear down.
+- The watch idle watchdog must not end a session while a turn is in flight (`awaitingAssistantResponse` or `awaitingResponseSince`), with a `maxAssistantWaitSeconds` (90 s) safety cap. Phone Think-Mode progress is sent as `.connectionStatus` heartbeats, which call `noteActivity()` on the watch.
 - Watch and iPhone apps both need to be running/reachable for live sessions.
 - `WCSession.sendMessageData` is used for raw audio bytes.
 - `WCSession.sendMessage` is used for compact control/text messages.
@@ -179,10 +194,12 @@ xcodegen generate
 # Typecheck core watch files.
 xcrun --sdk watchos swiftc -typecheck \
   Shared/RealtimeMessages.swift \
+  Shared/AudioSupport.swift \
   WatchGPT/Models/RealtimeTranscriptLine.swift \
   WatchGPT/Support/AppConfiguration.swift \
   WatchGPT/Services/RealtimeAudioIO.swift \
   WatchGPT/Services/RealtimeVoiceSession.swift \
+  WatchGPT/Intents/WatchGPTIntents.swift \
   -target arm64-apple-watchos11.0 \
   -module-cache-path /tmp/WatchGPTSwiftModuleCache
 
@@ -192,6 +209,7 @@ awk '/#Preview/ {exit} {print}' WatchGPT/Views/ContentView.swift > /tmp/watchgpt
 awk '/#Preview/ {exit} {print}' WatchGPT/Views/SettingsView.swift > /tmp/watchgpt-typecheck-watch/SettingsView.swift
 xcrun --sdk watchos swiftc -typecheck \
   Shared/RealtimeMessages.swift \
+  Shared/AudioSupport.swift \
   WatchGPT/Models/RealtimeTranscriptLine.swift \
   WatchGPT/Support/AppConfiguration.swift \
   WatchGPT/Services/RealtimeAudioIO.swift \
@@ -199,6 +217,7 @@ xcrun --sdk watchos swiftc -typecheck \
   WatchGPT/Views/RealtimeTranscriptBubble.swift \
   /tmp/watchgpt-typecheck-watch/ContentView.swift \
   /tmp/watchgpt-typecheck-watch/SettingsView.swift \
+  WatchGPT/Intents/WatchGPTIntents.swift \
   WatchGPT/WatchGPTApp.swift \
   -target arm64-apple-watchos11.0 \
   -module-cache-path /tmp/WatchGPTSwiftModuleCache
@@ -206,7 +225,10 @@ xcrun --sdk watchos swiftc -typecheck \
 # Typecheck core phone bridge.
 xcrun --sdk iphoneos swiftc -typecheck \
   Shared/RealtimeMessages.swift \
+  Shared/AudioSupport.swift \
   WatchGPTPhone/Support/PhoneConfiguration.swift \
+  WatchGPTPhone/Support/KeychainStore.swift \
+  WatchGPTPhone/Support/OpenAIParsing.swift \
   WatchGPTPhone/Services/PhoneRealtimeBridge.swift \
   -target arm64-apple-ios17.0 \
   -module-cache-path /tmp/WatchGPTSwiftModuleCache
@@ -217,13 +239,25 @@ awk '/#Preview/ {exit} {print}' WatchGPTPhone/Views/PhoneContentView.swift > /tm
 awk '/#Preview/ {exit} {print}' WatchGPTPhone/Views/PhoneSettingsView.swift > /tmp/watchgpt-typecheck-phone/PhoneSettingsView.swift
 xcrun --sdk iphoneos swiftc -typecheck \
   Shared/RealtimeMessages.swift \
+  Shared/AudioSupport.swift \
   WatchGPTPhone/Support/PhoneConfiguration.swift \
+  WatchGPTPhone/Support/KeychainStore.swift \
+  WatchGPTPhone/Support/OpenAIParsing.swift \
   WatchGPTPhone/Services/PhoneRealtimeBridge.swift \
   /tmp/watchgpt-typecheck-phone/PhoneContentView.swift \
   /tmp/watchgpt-typecheck-phone/PhoneSettingsView.swift \
   WatchGPTPhone/WatchGPTPhoneApp.swift \
   -target arm64-apple-ios17.0 \
   -module-cache-path /tmp/WatchGPTSwiftModuleCache
+
+# Full in-project build also works headlessly (no simulator needed) with
+# signing disabled — this validates the whole app + embedded watch app:
+xcodebuild -scheme WatchGPTPhone -project WatchGPT.xcodeproj -configuration Debug \
+  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+
+# Compile the logic test bundle (running it still needs a working simulator):
+xcodebuild -scheme WatchGPTPhone -project WatchGPT.xcodeproj -configuration Debug \
+  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build-for-testing
 
 # Quick asset catalog checks.
 xcrun actool WatchGPT/Assets.xcassets \
@@ -247,7 +281,7 @@ xcrun actool WatchGPT/Assets.xcassets \
   --minimum-deployment-target 11.0
 ```
 
-Note: full `xcodebuild` may fail in this local environment because CoreSimulator/watch simulator runtimes are broken or unavailable. The Swift typechecks above have been the more reliable sanity checks.
+Note: running tests / simulator builds may fail in this local environment because CoreSimulator/watch simulator runtimes are broken or unavailable. However, the headless `xcodebuild ... -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` above DOES work and compiles both targets — use it for a real build sanity check. The Swift typechecks remain the fastest per-file check.
 
 ## Gotchas
 
@@ -255,6 +289,9 @@ Note: full `xcodebuild` may fail in this local environment because CoreSimulator
 - `project.yml` and `WatchGPT.xcodeproj/project.pbxproj` are both currently updated. If you regenerate with XcodeGen, re-check target resource phases and app icon names:
   - Watch target: `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`
   - Phone target: `ASSETCATALOG_COMPILER_APPICON_NAME = PhoneAppIcon`
+- `project.yml` carries `settings.base.DEVELOPMENT_TEAM = 3ML6V62AF5` so signing survives regeneration.
+- XcodeGen 2.44.1 ignores `options.objectVersion: 63` and writes `objectVersion = 77` (Xcode-16 format). If you need the older (Xcode-15-openable) format, after `xcodegen generate` run:
+  `sed -i '' 's/objectVersion = 77;/objectVersion = 63;/' WatchGPT.xcodeproj/project.pbxproj && sed -i '' '/preferredProjectObjectVersion = 77;/d' WatchGPT.xcodeproj/project.pbxproj`
 - The phone target needs the shared `WatchGPT/Assets.xcassets` resource for `PhoneAppIcon`.
 - `sendMessageData` can be fragile with large payloads. GPT-5.5 TTS audio is chunked via `sendAudioToWatchInChunks`.
 - `WCSession.isReachable` flickers. Watch logs reachability changes but should not tear down sessions just because it flips.

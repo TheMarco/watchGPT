@@ -4,6 +4,7 @@ struct SettingsView: View {
     @AppStorage(AppConfiguration.automaticConversationKey) private var automaticConversation = true
     @AppStorage(AppConfiguration.workoutRuntimeKey) private var workoutRuntime = true
     @AppStorage(AppConfiguration.micSensitivityKey) private var micSensitivity = MicSensitivity.default.rawValue
+    @AppStorage(AppConfiguration.outputVolumeKey) private var outputVolume = OutputVolume.default.rawValue
     @AppStorage(AppConfiguration.voiceBargeInKey) private var voiceBargeIn = false
 
     let onReset: () -> Void
@@ -36,6 +37,18 @@ struct SettingsView: View {
                 Text("Microphone")
             } footer: {
                 Text("Lower sensitivity if background noise interferes. Turn barge-in off if the assistant keeps cutting itself off — you can still tap the main button to interrupt.")
+            }
+
+            Section {
+                Picker("Reply volume", selection: $outputVolume) {
+                    ForEach(OutputVolume.allCases) { option in
+                        Text(option.displayName).tag(option.rawValue)
+                    }
+                }
+            } header: {
+                Text("Playback")
+            } footer: {
+                Text("How loud spoken replies are. Loud uses smooth limiting so it won't crackle.")
             }
 
             Section {

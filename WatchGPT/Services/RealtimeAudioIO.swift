@@ -18,13 +18,14 @@ enum RealtimeAudioIOError: LocalizedError {
 final class RealtimeAudioIO {
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
-    private let wireFormat = AVAudioFormat(
-        commonFormat: .pcmFormatInt16,
+    private let playbackFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32,
         sampleRate: 24_000,
         channels: 1,
         interleaved: false
     )!
-    private let playbackFormat = AVAudioFormat(
+
+    private let resampleFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
         sampleRate: 24_000,
         channels: 1,
@@ -37,12 +38,44 @@ final class RealtimeAudioIO {
     private var audioOutBuffer = Data()
     private let audioOutLock = NSLock()
     private let audioOutFlushBytes = 9_600
-    private var inputGain: Float = 4.0
-    private let outputGain: Float = 2.0
+
+    // `inputGain`/`outputGain` are written from the main actor but read on the
+    // real-time audio render thread, so access is guarded. Each render pass
+    // reads the value once into a local to keep per-sample work lock-free.
+    private let gainLock = NSLock()
+    private var _inputGain: Float = MicSensitivity.default.inputGain
+    private var _outputGain: Float = OutputVolume.default.gain
+
+    // AVAudioConverter handles sample-rate + channel conversion with proper
+    // anti-alias filtering (the old hand-rolled path used nearest-neighbor
+    // decimation, which aliased on the watch's 48 kHz mic).
+    private var resampler: AVAudioConverter?
+    private var resamplerSourceFormat: AVAudioFormat?
 
     func setInputGain(_ value: Float) {
-        inputGain = value
+        gainLock.lock()
+        _inputGain = value
+        gainLock.unlock()
     }
+
+    func setOutputVolume(_ gain: Float) {
+        gainLock.lock()
+        _outputGain = gain
+        gainLock.unlock()
+    }
+
+    private func currentInputGain() -> Float {
+        gainLock.lock()
+        defer { gainLock.unlock() }
+        return _inputGain
+    }
+
+    private func currentOutputGain() -> Float {
+        gainLock.lock()
+        defer { gainLock.unlock() }
+        return _outputGain
+    }
+
     private var interruptionObserver: NSObjectProtocol?
 
     // Wires the graph and sets the session category without activating it,
@@ -229,6 +262,7 @@ final class RealtimeAudioIO {
             return
         }
 
+        let gain = currentOutputGain()
         buffer.frameLength = frameCount
         data.withUnsafeBytes { rawBuffer in
             guard let source = rawBuffer.baseAddress?.assumingMemoryBound(to: Int16.self) else {
@@ -236,8 +270,10 @@ final class RealtimeAudioIO {
             }
 
             for index in 0..<Int(frameCount) {
-                let amplified = Float(source[index]) / Float(Int16.max) * outputGain
-                channel[index] = max(-1.0, min(1.0, amplified))
+                let amplified = Float(source[index]) / Float(Int16.max) * gain
+                // Soft limit instead of hard clip so loud TTS saturates smoothly
+                // rather than crackling.
+                channel[index] = tanhf(amplified)
             }
         }
 
@@ -250,41 +286,13 @@ final class RealtimeAudioIO {
 
     private func playPCM16WithAudioPlayer(_ data: Data) -> Bool {
         do {
-            let wav = makeWAVData(fromPCM16: data)
+            let wav = PCMWAV.data(fromPCM16: data)
             audioPlayer = try AVAudioPlayer(data: wav)
             audioPlayer?.prepareToPlay()
             return audioPlayer?.play() == true
         } catch {
             return false
         }
-    }
-
-    private func makeWAVData(fromPCM16 pcm: Data) -> Data {
-        var data = Data()
-        let sampleRate: UInt32 = 24_000
-        let channels: UInt16 = 1
-        let bitsPerSample: UInt16 = 16
-        let byteRate = sampleRate * UInt32(channels) * UInt32(bitsPerSample / 8)
-        let blockAlign = channels * (bitsPerSample / 8)
-        let chunkSize = UInt32(36 + pcm.count)
-        let subchunk2Size = UInt32(pcm.count)
-
-        data.appendASCII("RIFF")
-        data.appendLittleEndian(chunkSize)
-        data.appendASCII("WAVE")
-        data.appendASCII("fmt ")
-        data.appendLittleEndian(UInt32(16))
-        data.appendLittleEndian(UInt16(1))
-        data.appendLittleEndian(channels)
-        data.appendLittleEndian(sampleRate)
-        data.appendLittleEndian(byteRate)
-        data.appendLittleEndian(blockAlign)
-        data.appendLittleEndian(bitsPerSample)
-        data.appendASCII("data")
-        data.appendLittleEndian(subchunk2Size)
-        data.append(pcm)
-
-        return data
     }
 
     private func peakFloat(_ buffer: AVAudioPCMBuffer) -> Float {
@@ -304,81 +312,82 @@ final class RealtimeAudioIO {
     }
 
     private func convertInputBuffer(_ buffer: AVAudioPCMBuffer) -> Data? {
-        guard let channel = buffer.floatChannelData?[0] else {
+        guard buffer.frameLength > 0, buffer.format.sampleRate > 0 else {
             return nil
         }
 
-        let inputFrames = Int(buffer.frameLength)
-        let inputRate = buffer.format.sampleRate
-        let outputRate = wireFormat.sampleRate
+        let gain = currentInputGain()
 
-        guard inputFrames > 0, inputRate > 0 else {
+        // Fast path: already 24 kHz mono float — pack directly.
+        if buffer.format.sampleRate == resampleFormat.sampleRate,
+           buffer.format.channelCount == 1,
+           buffer.format.commonFormat == .pcmFormatFloat32,
+           let channel = buffer.floatChannelData?[0]
+        {
+            return packFloat32ToInt16(channel, frames: Int(buffer.frameLength), gain: gain)
+        }
+
+        guard let resampled = resampledBuffer(buffer),
+              let channel = resampled.floatChannelData?[0]
+        else {
             return nil
         }
 
-        if inputRate == outputRate {
-            return packFloat32ToInt16(channel, frames: inputFrames)
-        }
-
-        if inputRate > outputRate {
-            let ratio = inputRate / outputRate
-            let outputFrames = Int(Double(inputFrames) / ratio)
-            var data = Data(count: outputFrames * 2)
-            data.withUnsafeMutableBytes { raw in
-                let out = raw.bindMemory(to: Int16.self)
-                for i in 0..<outputFrames {
-                    let srcIdx = Int(Double(i) * ratio)
-                    let safeIdx = min(srcIdx, inputFrames - 1)
-                    out[i] = floatToInt16(channel[safeIdx])
-                }
-            }
-            return data
-        }
-
-        let ratio = outputRate / inputRate
-        let outputFrames = Int(Double(inputFrames) * ratio)
-        var data = Data(count: outputFrames * 2)
-        data.withUnsafeMutableBytes { raw in
-            let out = raw.bindMemory(to: Int16.self)
-            for i in 0..<outputFrames {
-                let srcIdx = Double(i) / ratio
-                let lower = Int(srcIdx.rounded(.down))
-                let upper = min(lower + 1, inputFrames - 1)
-                let frac = Float(srcIdx - Double(lower))
-                let blended = (1 - frac) * channel[lower] + frac * channel[upper]
-                out[i] = floatToInt16(blended)
-            }
-        }
-        return data
+        return packFloat32ToInt16(channel, frames: Int(resampled.frameLength), gain: gain)
     }
 
-    private func packFloat32ToInt16(_ channel: UnsafePointer<Float>, frames: Int) -> Data {
+    private func resampledBuffer(_ input: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        if resampler == nil || resamplerSourceFormat != input.format {
+            resampler = AVAudioConverter(from: input.format, to: resampleFormat)
+            resamplerSourceFormat = input.format
+        }
+
+        guard let resampler else {
+            return nil
+        }
+
+        let ratio = resampleFormat.sampleRate / input.format.sampleRate
+        let capacity = AVAudioFrameCount((Double(input.frameLength) * ratio).rounded(.up)) + 32
+        guard capacity > 0,
+              let output = AVAudioPCMBuffer(pcmFormat: resampleFormat, frameCapacity: capacity)
+        else {
+            return nil
+        }
+
+        var consumed = false
+        var conversionError: NSError?
+        let status = resampler.convert(to: output, error: &conversionError) { _, inputStatus in
+            if consumed {
+                inputStatus.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            inputStatus.pointee = .haveData
+            return input
+        }
+
+        guard status != .error, conversionError == nil, output.frameLength > 0 else {
+            return nil
+        }
+
+        return output
+    }
+
+    private func packFloat32ToInt16(_ channel: UnsafePointer<Float>, frames: Int, gain: Float) -> Data {
         var data = Data(count: frames * 2)
         data.withUnsafeMutableBytes { raw in
             let out = raw.bindMemory(to: Int16.self)
             for i in 0..<frames {
-                out[i] = floatToInt16(channel[i])
+                out[i] = limitedInt16(channel[i], gain: gain)
             }
         }
         return data
     }
 
-    private func floatToInt16(_ sample: Float) -> Int16 {
-        let amplified = sample * inputGain
-        let clipped = max(-1.0, min(1.0, amplified))
-        return Int16(clipped * Float(Int16.max))
-    }
-}
-
-private extension Data {
-    mutating func appendASCII(_ string: String) {
-        append(Data(string.utf8))
-    }
-
-    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
-        var littleEndian = value.littleEndian
-        Swift.withUnsafeBytes(of: &littleEndian) { bytes in
-            append(contentsOf: bytes)
-        }
+    private func limitedInt16(_ sample: Float, gain: Float) -> Int16 {
+        // tanh keeps the result in (-1, 1) so the Int16 conversion never
+        // overflows and clipping saturates smoothly instead of wrapping.
+        let limited = tanhf(sample * gain)
+        return Int16(limited * Float(Int16.max))
     }
 }

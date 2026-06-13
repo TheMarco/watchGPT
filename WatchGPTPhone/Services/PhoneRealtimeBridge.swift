@@ -117,6 +117,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     @Published private(set) var reconnectCount = 0
     @Published private(set) var lastOpenAIEventType = "none"
     @Published private(set) var lastReconnectMessage: String?
+    @Published private(set) var activeEngine: VoiceEngine = .realtime
 
     private let urlSession: URLSession = {
         let config = URLSessionConfiguration.default
@@ -132,6 +133,15 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     private var reconnectTask: Task<Void, Never>?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 4
+    // All outbound socket frames flow through one ordered queue so protocol-
+    // sensitive sequences (function_call_output → response.create, commit →
+    // response.create, session.update → appends) can't be reordered by the
+    // scheduler the way independent detached Tasks could be.
+    private var sendContinuation: AsyncStream<String>.Continuation?
+    private var sendTask: Task<Void, Never>?
+    // Debounces a momentary WCSession reachability dip so a flicker doesn't tear
+    // down the whole OpenAI session.
+    private var reachabilityLossTask: Task<Void, Never>?
     private var wcSession: WCSession?
     private var pendingAssistantAudio = Data()
     private let pendingAssistantFlushBytes = 9_600
@@ -148,7 +158,8 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     private var regularTurnInProgress = false
     private var regularTurnTask: Task<Void, Never>?
     private var regularConversationContext: [String] = []
-    private let regularSpeechThreshold: Int16 = 1_400
+    // Set from the watch's mic-sensitivity preset at session start.
+    private var regularSpeechThreshold: Int16 = MicSensitivity.default.thinkModeVADThreshold
     private let regularSpeechStartBytes = 9_600
     private let regularSilenceBytes = 52_800
     private let regularMinimumSpeechBytes = 12_000
@@ -161,7 +172,15 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     private var activeSessionStartedAt = Date()
     private var activeSessionWebSearchStart = 0
     private var activeSessionReconnectStart = 0
-    private var defaultsObserver: NSObjectProtocol?
+    // Only these keys should re-push a live session.update; observing them
+    // directly avoids reacting to every unrelated UserDefaults write (e.g. each
+    // transcript save during a call).
+    private let observedDefaultsKeys = [
+        PhoneConfiguration.realtimeVoiceKey,
+        PhoneConfiguration.assistantLanguageKey,
+        PhoneConfiguration.realtimeVADEagernessKey
+    ]
+    private var isObservingDefaults = false
 
     override init() {
         wcSession = WCSession.isSupported() ? WCSession.default : nil
@@ -170,8 +189,10 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     }
 
     deinit {
-        if let defaultsObserver {
-            NotificationCenter.default.removeObserver(defaultsObserver)
+        if isObservingDefaults {
+            for key in observedDefaultsKeys {
+                UserDefaults.standard.removeObserver(self, forKeyPath: key)
+            }
         }
     }
 
@@ -184,21 +205,28 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         wcSession.activate()
         statusText = "Waiting for watch"
 
-        if defaultsObserver == nil {
-            defaultsObserver = NotificationCenter.default.addObserver(
-                forName: UserDefaults.didChangeNotification,
-                object: nil,
-                queue: nil
-            ) { [weak self] _ in
-                Task { @MainActor in
-                    self?.applyVoiceChangeIfNeeded()
-                }
+        if !isObservingDefaults {
+            for key in observedDefaultsKeys {
+                UserDefaults.standard.addObserver(self, forKeyPath: key, options: [.new], context: nil)
             }
+            isObservingDefaults = true
+        }
+    }
+
+    nonisolated override func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey: Any]?,
+        context: UnsafeMutableRawPointer?
+    ) {
+        Task { @MainActor [weak self] in
+            self?.applyVoiceChangeIfNeeded()
         }
     }
 
     private func startSession(engine: VoiceEngine, automaticTurnDetection: Bool) {
         activeVoiceEngine = engine
+        activeEngine = engine
         switch engine {
         case .realtime:
             startRealtime(automaticTurnDetection: automaticTurnDetection)
@@ -248,6 +276,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
 
         let task = urlSession.webSocketTask(with: request)
         webSocket = task
+        startSendQueue()
         task.resume()
 
         statusText = "Connecting to OpenAI"
@@ -343,7 +372,10 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         pingTask = nil
         reconnectTask?.cancel()
         reconnectTask = nil
+        reachabilityLossTask?.cancel()
+        reachabilityLossTask = nil
         reconnectAttempts = 0
+        stopSendQueue()
         webSocket?.cancel(with: .normalClosure, reason: nil)
         webSocket = nil
         pendingAssistantAudio = Data()
@@ -390,6 +422,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         receiveTask = nil
         pingTask?.cancel()
         pingTask = nil
+        stopSendQueue()
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         pendingAssistantAudio = Data()
@@ -458,16 +491,17 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             statusText = "Live"
             sendToWatch(.ready, payload: [RealtimeMessageKey.voiceEngine: activeVoiceEngine.rawValue])
         case "error":
-            let text: String
-            if let direct = event["message"] as? String {
-                text = direct
-            } else if let nested = event["error"] as? [String: Any],
-                      let message = nested["message"] as? String {
-                text = message
-            } else {
-                text = "OpenAI realtime error"
+            let info = RealtimeErrorClassifier.parse(event)
+            if RealtimeErrorClassifier.isNonFatal(info) {
+                // Recoverable conditions (e.g. a racing cancel/commit, "no active
+                // response") must not tear down the watch session.
+                print("[WatchGPTPhone] non-fatal realtime error: \(info.message)")
+                if statusText.hasPrefix("Error") {
+                    statusText = "Live"
+                }
+                return
             }
-            sendErrorToWatch(text)
+            sendErrorToWatch(info.message)
         case "input_audio_buffer.speech_started":
             sendToWatch(.speechStarted)
         case "input_audio_buffer.speech_stopped":
@@ -608,19 +642,10 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             throw WebSearchError.decode
         }
 
-        if let outputText = json["output_text"] as? String, !outputText.isEmpty {
-            return outputText
+        guard let text = OpenAIResponseParsing.outputText(from: json) else {
+            throw WebSearchError.decode
         }
-
-        if let output = json["output"] as? [[String: Any]] {
-            let text = output.compactMap { item -> String? in
-                guard let content = item["content"] as? [[String: Any]] else { return nil }
-                return content.compactMap { $0["text"] as? String }.joined()
-            }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty { return text }
-        }
-
-        throw WebSearchError.decode
+        return text
     }
 
     private func sendWebSearchOutput(callId: String, payload: [String: Any]) async {
@@ -771,17 +796,41 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     For anything live, current, or time-sensitive — crypto and stock prices, FX rates, weather, news, sports scores, schedules, releases, laws, software versions, etc. — call the web_search tool. The response is an object with a concise factual "answer" string already produced from a real web search; quote or paraphrase that answer directly and do not second-guess it. Skip web_search for timeless or general knowledge. Before a search that may take a few seconds, give a brief preamble like "Let me check." Never invent citations, URLs, dates, or claims that are not in the answer.
     """
 
+    private func startSendQueue() {
+        sendContinuation?.finish()
+        sendTask?.cancel()
+
+        let (stream, continuation) = AsyncStream<String>.makeStream()
+        sendContinuation = continuation
+        sendTask = Task { [weak self] in
+            // This Task inherits MainActor isolation from startSendQueue(), so
+            // reading webSocket is a synchronous main-actor access; only the
+            // socket send actually suspends.
+            for await text in stream {
+                guard let socket = self?.webSocket else {
+                    continue
+                }
+                try? await socket.send(.string(text))
+            }
+        }
+    }
+
+    private func stopSendQueue() {
+        sendContinuation?.finish()
+        sendContinuation = nil
+        sendTask?.cancel()
+        sendTask = nil
+    }
+
     private func sendOpenAIEvent(_ event: [String: Any]) {
-        guard let webSocket,
-              let data = try? JSONSerialization.data(withJSONObject: event),
+        guard let data = try? JSONSerialization.data(withJSONObject: event),
               let text = String(data: data, encoding: .utf8)
         else {
             return
         }
 
-        Task {
-            try? await webSocket.send(.string(text))
-        }
+        // Yielding (rather than spawning a Task) preserves call order on the wire.
+        sendContinuation?.yield(text)
     }
 
     private func handleWatchAudio(_ data: Data) {
@@ -866,71 +915,84 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         }
     }
 
+    /// Aborts an in-flight Think Mode turn (transcribe → think → stream speech)
+    /// when the user taps to interrupt on the watch. Cancelling the task also
+    /// cancels its in-flight URLSession calls.
+    private func cancelRegularTurn() {
+        guard activeVoiceEngine == .gpt5 else {
+            return
+        }
+
+        regularTurnTask?.cancel()
+        regularTurnTask = nil
+        regularTurnInProgress = false
+        resetRegularSpeechDetection()
+        sendToWatch(.responseDone)
+    }
+
     private func processRegularTurn(_ pcmAudio: Data) async {
         guard !pcmAudio.isEmpty else {
             return
         }
 
-        await MainActor.run {
-            statusText = "Transcribing"
-        }
+        // These connectionStatus pings double as keep-alive heartbeats so the
+        // watch's idle watchdog doesn't end the session during a long turn.
+        statusText = "Transcribing"
+        sendToWatch(.connectionStatus, text: "Transcribing")
 
         do {
             let transcript = try await transcribePCM16(pcmAudio)
             let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmedTranscript.isEmpty else {
-                await MainActor.run {
-                    regularTurnInProgress = false
-                    statusText = "Think Mode"
-                    sendToWatch(.responseDone)
-                }
+
+            // gpt-4o-mini-transcribe hallucinates stock phrases ("Thank you",
+            // "Thanks for watching") on near-silence; don't burn a whole turn on
+            // them.
+            guard !trimmedTranscript.isEmpty,
+                  !ThinkTranscriptFilter.isLikelyHallucination(trimmedTranscript)
+            else {
+                regularTurnInProgress = false
+                regularTurnTask = nil
+                statusText = "Think Mode"
+                sendToWatch(.responseDone)
                 return
             }
 
-            await MainActor.run {
-                eventsFromOpenAI += 1
-                sendToWatch(.userTranscript, text: trimmedTranscript)
-                appendTranscriptLine(.user, trimmedTranscript)
-                statusText = "Thinking"
-            }
+            eventsFromOpenAI += 1
+            sendToWatch(.userTranscript, text: trimmedTranscript)
+            appendTranscriptLine(.user, trimmedTranscript)
+            statusText = "Thinking"
+            sendToWatch(.connectionStatus, text: "Thinking")
 
             let answer = try await createRegularResponse(for: trimmedTranscript)
             let trimmedAnswer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            await MainActor.run {
-                eventsFromOpenAI += 1
-                sendToWatch(.assistantTranscriptFinal, text: trimmedAnswer)
-                appendTranscriptLine(.assistant, trimmedAnswer)
-                rememberRegularTurn(user: trimmedTranscript, assistant: trimmedAnswer)
-                statusText = "Speaking"
-            }
+            eventsFromOpenAI += 1
+            sendToWatch(.assistantTranscriptFinal, text: trimmedAnswer)
+            appendTranscriptLine(.assistant, trimmedAnswer)
+            rememberRegularTurn(user: trimmedTranscript, assistant: trimmedAnswer)
+            statusText = "Speaking"
+            sendToWatch(.connectionStatus, text: "Speaking")
 
-            let speech = try await synthesizeSpeech(trimmedAnswer)
-            await sendAudioToWatchInChunks(speech)
+            try await streamSpeechToWatch(trimmedAnswer)
 
-            await MainActor.run {
-                eventsFromOpenAI += 1
-                sendToWatch(.responseDone)
-                regularTurnInProgress = false
-                regularTurnTask = nil
-                statusText = "Think Mode"
-            }
+            eventsFromOpenAI += 1
+            sendToWatch(.responseDone)
+            regularTurnInProgress = false
+            regularTurnTask = nil
+            statusText = "Think Mode"
         } catch is CancellationError {
-            await MainActor.run {
-                regularTurnInProgress = false
-                regularTurnTask = nil
-                statusText = isActive ? "Think Mode" : "Waiting for watch"
-            }
+            regularTurnInProgress = false
+            regularTurnTask = nil
+            statusText = isActive ? "Think Mode" : "Waiting for watch"
         } catch {
-            await MainActor.run {
-                regularTurnInProgress = false
-                regularTurnTask = nil
-                if !isCancellationError(error) {
-                    sendErrorToWatch("Think Mode failed: \(error.localizedDescription)")
-                }
+            regularTurnInProgress = false
+            regularTurnTask = nil
+            if !isCancellationError(error) {
+                sendErrorToWatch("Think Mode failed: \(error.localizedDescription)")
             }
         }
     }
+
 
     private func updateRegularSpeechCandidate(with data: Data, hasSpeech: Bool) -> Bool {
         guard hasSpeech else {
@@ -1001,23 +1063,6 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             return
         }
         wcSession.sendMessageData(data, replyHandler: nil, errorHandler: nil)
-    }
-
-    private func sendAudioToWatchInChunks(_ data: Data) async {
-        var offset = 0
-        while offset < data.count {
-            if Task.isCancelled {
-                return
-            }
-
-            let end = min(offset + watchAudioChunkBytes, data.count)
-            sendAudioToWatch(data.subdata(in: offset..<end))
-            offset = end
-
-            if offset < data.count {
-                try? await Task.sleep(nanoseconds: 8_000_000)
-            }
-        }
     }
 
     private func bufferAssistantAudio(_ data: Data) {
@@ -1176,7 +1221,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         request.setValue("Bearer \(PhoneConfiguration.openAIAPIKey)", forHTTPHeaderField: "authorization")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "model": "gpt-4.1-mini",
+            "model": PhoneConfiguration.transcriptMetadataModel,
             "instructions": "Create compact metadata for an Apple Watch voice transcript. Return only JSON with keys title and summary. Title: 3-7 words, natural, no quotes, no trailing period. Summary: one sentence under 24 words.",
             "input": transcript
         ])
@@ -1207,25 +1252,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
-
-        if let outputText = json["output_text"] as? String {
-            return outputText
-        }
-
-        if let output = json["output"] as? [[String: Any]] {
-            let parts = output.compactMap { item -> String? in
-                guard let content = item["content"] as? [[String: Any]] else {
-                    return nil
-                }
-                return content.compactMap { part in
-                    part["text"] as? String
-                }.joined()
-            }
-            let joined = parts.joined(separator: "\n")
-            return joined.isEmpty ? nil : joined
-        }
-
-        return nil
+        return OpenAIResponseParsing.outputText(from: json)
     }
 
     private func parseTranscriptMetadata(_ text: String) -> (title: String, summary: String)? {
@@ -1288,7 +1315,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
     }
 
     private func transcribePCM16(_ pcmAudio: Data) async throws -> String {
-        let wav = makeWAVData(fromPCM16: pcmAudio)
+        let wav = PCMWAV.data(fromPCM16: pcmAudio)
         let boundary = "WatchGPT-\(UUID().uuidString)"
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/audio/transcriptions")!)
         request.httpMethod = "POST"
@@ -1360,29 +1387,24 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             throw PhoneRealtimeBridgeError.invalidResponse
         }
 
-        if let outputText = json["output_text"] as? String {
-            return outputText
+        // Count any server-side searches OpenAI ran so usage metrics reflect Think
+        // Mode searches (previously always zero — only Fast Mode incremented it).
+        let searches = OpenAIResponseParsing.webSearchCallCount(in: json)
+        if searches > 0 {
+            webSearchCount += searches
         }
 
-        if let output = json["output"] as? [[String: Any]] {
-            let parts = output.compactMap { item -> String? in
-                guard let content = item["content"] as? [[String: Any]] else {
-                    return nil
-                }
-                return content.compactMap { part in
-                    part["text"] as? String
-                }.joined()
-            }
-            let joined = parts.joined(separator: "\n")
-            if !joined.isEmpty {
-                return joined
-            }
+        guard let text = OpenAIResponseParsing.outputText(from: json) else {
+            throw PhoneRealtimeBridgeError.invalidResponse
         }
-
-        throw PhoneRealtimeBridgeError.invalidResponse
+        return text
     }
 
-    private func synthesizeSpeech(_ text: String) async throws -> Data {
+    // Streams TTS PCM as it arrives and forwards it to the watch in paced,
+    // Int16-aligned chunks, so the watch starts speaking while OpenAI is still
+    // synthesizing instead of waiting for the whole clip. Runs off the main
+    // actor (only the per-chunk WCSession send hops back).
+    nonisolated private func streamSpeechToWatch(_ text: String) async throws {
         var request = URLRequest(url: URL(string: "https://api.openai.com/v1/audio/speech")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(PhoneConfiguration.openAIAPIKey)", forHTTPHeaderField: "authorization")
@@ -1395,9 +1417,49 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             "instructions": "Speak naturally and warmly. Keep the delivery concise and conversational."
         ])
 
-        let (data, response) = try await urlSession.data(for: request)
-        try validateHTTPResponse(response, data: data)
-        return data
+        let (bytes, response) = try await urlSession.bytes(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw PhoneRealtimeBridgeError.invalidResponse
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            var errorData = Data()
+            for try await byte in bytes {
+                errorData.append(byte)
+                if errorData.count > 8_192 { break }
+            }
+            let message: String
+            if let json = try? JSONSerialization.jsonObject(with: errorData) as? [String: Any],
+               let error = json["error"] as? [String: Any],
+               let text = error["message"] as? String {
+                message = text
+            } else {
+                message = HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            }
+            throw PhoneRealtimeBridgeError.openAI(message)
+        }
+
+        let chunkBytes = watchAudioChunkBytes
+        var buffer = Data()
+        buffer.reserveCapacity(chunkBytes + 2)
+
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            buffer.append(byte)
+
+            if buffer.count >= chunkBytes {
+                let aligned = buffer.count - (buffer.count % 2)
+                await sendAudioToWatch(Data(buffer.prefix(aligned)))
+                buffer.removeFirst(aligned)
+                try? await Task.sleep(nanoseconds: 8_000_000)
+            }
+        }
+
+        let aligned = buffer.count - (buffer.count % 2)
+        if aligned > 0 {
+            await sendAudioToWatch(Data(buffer.prefix(aligned)))
+        }
     }
 
     private func validateHTTPResponse(_ response: URLResponse, data: Data) throws {
@@ -1423,31 +1485,6 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
     }
 
-    private func makeWAVData(fromPCM16 pcm: Data) -> Data {
-        var data = Data()
-        let sampleRate: UInt32 = 24_000
-        let channels: UInt16 = 1
-        let bitsPerSample: UInt16 = 16
-        let byteRate = sampleRate * UInt32(channels) * UInt32(bitsPerSample / 8)
-        let blockAlign = channels * (bitsPerSample / 8)
-        let chunkSize = UInt32(36 + pcm.count)
-
-        data.appendASCII("RIFF")
-        data.appendLittleEndian(chunkSize)
-        data.appendASCII("WAVE")
-        data.appendASCII("fmt ")
-        data.appendLittleEndian(UInt32(16))
-        data.appendLittleEndian(UInt16(1))
-        data.appendLittleEndian(channels)
-        data.appendLittleEndian(sampleRate)
-        data.appendLittleEndian(byteRate)
-        data.appendLittleEndian(blockAlign)
-        data.appendLittleEndian(bitsPerSample)
-        data.appendASCII("data")
-        data.appendLittleEndian(UInt32(pcm.count))
-        data.append(pcm)
-        return data
-    }
 }
 
 private enum PhoneRealtimeBridgeError: LocalizedError {
@@ -1465,17 +1502,6 @@ private enum PhoneRealtimeBridgeError: LocalizedError {
 }
 
 private extension Data {
-    mutating func appendASCII(_ string: String) {
-        append(Data(string.utf8))
-    }
-
-    mutating func appendLittleEndian<T: FixedWidthInteger>(_ value: T) {
-        var littleEndian = value.littleEndian
-        Swift.withUnsafeBytes(of: &littleEndian) { bytes in
-            append(contentsOf: bytes)
-        }
-    }
-
     mutating func appendMultipartField(name: String, value: String, boundary: String) {
         append(Data("--\(boundary)\r\n".utf8))
         append(Data("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
@@ -1524,11 +1550,29 @@ extension PhoneRealtimeBridge: WCSessionDelegate {
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor [weak self] in
+            guard let self else { return }
+
             if session.isReachable {
-                self?.statusText = self?.isActive == true ? "Live" : "Watch reachable"
-            } else {
-                self?.statusText = "Watch not reachable"
-                self?.stopRealtime()
+                self.reachabilityLossTask?.cancel()
+                self.reachabilityLossTask = nil
+                self.statusText = self.isActive ? "Live" : "Watch reachable"
+                return
+            }
+
+            self.statusText = "Watch not reachable"
+            guard self.isActive, self.reachabilityLossTask == nil else { return }
+
+            // WCSession.isReachable flickers constantly; only tear the session
+            // down if the dip is sustained, mirroring the watch's tolerance.
+            self.reachabilityLossTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                await MainActor.run {
+                    guard let self else { return }
+                    self.reachabilityLossTask = nil
+                    if self.isActive, self.wcSession?.isReachable == false {
+                        self.stopRealtime()
+                    }
+                }
             }
         }
     }
@@ -1542,11 +1586,18 @@ extension PhoneRealtimeBridge: WCSessionDelegate {
             switch type {
             case .start:
                 let automaticTurnDetection = message[RealtimeMessageKey.automaticTurnDetection] as? Bool ?? true
+                if let rawSensitivity = message[RealtimeMessageKey.micSensitivity] as? String,
+                   let sensitivity = MicSensitivity(rawValue: rawSensitivity)
+                {
+                    self.regularSpeechThreshold = sensitivity.thinkModeVADThreshold
+                }
                 self.startSession(engine: PhoneConfiguration.defaultVoiceEngine, automaticTurnDetection: automaticTurnDetection)
             case .stop:
                 self.stopRealtime()
             case .commit:
                 self.commitUserTurn()
+            case .cancelTurn:
+                self.cancelRegularTurn()
             case .watchAudioLevel:
                 if let text = message[RealtimeMessageKey.text] as? String,
                    let value = Float(text)

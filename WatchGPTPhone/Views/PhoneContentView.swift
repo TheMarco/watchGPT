@@ -99,7 +99,11 @@ struct PhoneContentView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 20)
         .padding(.horizontal, 18)
-        .glassSurface(in: RoundedRectangle(cornerRadius: 22, style: .continuous), tint: heroTint) {
+        .background {
+            // Intentionally solid (not glass): this is a large content header,
+            // and white logo/text needs an opaque, lower-brightness surface to
+            // stay legible — especially when heroTint goes green while active.
+            // Liquid Glass is reserved for the floating controls/cards below.
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
                 .overlay(alignment: .top) {

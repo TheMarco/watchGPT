@@ -1,0 +1,70 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-analyze-test:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select current stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Mint
+        run: brew install mint
+
+      - name: Cache pinned Swift tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.mint
+          key: ${{ runner.os }}-${{ runner.arch }}-mint-${{ hashFiles('Mintfile') }}
+
+      - name: Install pinned tools
+        run: npm run tools:bootstrap
+
+      - name: Verify generated Xcode project
+        run: npm run project:verify
+
+      - name: Run portable logic tests
+        run: npm run test:logic
+
+      - name: Build without signing
+        run: npm run build
+
+      - name: Analyze without signing
+        run: npm run analyze
+
+      - name: Build tests
+        run: npm run test:build
+
+      - name: Select an available iPhone simulator
+        run: |
+          simulator_id="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ { print $2; exit }')"
+          if [ -z "$simulator_id" ]; then
+            echo "No available iPhone simulator was found." >&2
+            exit 1
+          fi
+          echo "WATCHGPT_TEST_DESTINATION=platform=iOS Simulator,id=$simulator_id" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        run: npm run test:simulator

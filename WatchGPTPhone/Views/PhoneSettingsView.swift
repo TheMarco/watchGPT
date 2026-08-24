@@ -2,12 +2,17 @@ import SwiftUI
 
 struct PhoneSettingsView: View {
     @State private var apiKey = PhoneConfiguration.openAIAPIKey
+    @State private var lastSavedAPIKey = PhoneConfiguration.openAIAPIKey
+    @FocusState private var isAPIKeyFocused: Bool
     @AppStorage(PhoneConfiguration.defaultVoiceEngineKey) private var defaultEngine = VoiceEngine.realtime.rawValue
     @AppStorage(PhoneConfiguration.realtimeVoiceKey) private var realtimeVoice = PhoneConfiguration.defaultRealtimeVoice
     @AppStorage(PhoneConfiguration.thinkVoiceKey) private var thinkVoice = PhoneConfiguration.defaultThinkVoice
     @AppStorage(PhoneConfiguration.realtimeVADEagernessKey) private var vadEagerness = RealtimeVADEagerness.low.rawValue
     @AppStorage(PhoneConfiguration.regularReasoningEffortKey) private var reasoningEffort = ReasoningEffort.low.rawValue
     @AppStorage(PhoneConfiguration.assistantLanguageKey) private var language = AssistantLanguage.auto.rawValue
+    @AppStorage(PhoneConfiguration.realtimeModelKey) private var realtimeModel = RealtimeModelOption.full.rawValue
+    @AppStorage(PhoneConfiguration.thinkModelKey) private var thinkModel = ThinkModelOption.terra.rawValue
+    @AppStorage(PhoneConfiguration.transcriptionModelKey) private var transcriptionModel = TranscriptionModelOption.quality.rawValue
 
     var body: some View {
         Form {
@@ -16,12 +21,22 @@ struct PhoneSettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.system(.body, design: .monospaced))
-                    .onChange(of: apiKey) { _, newValue in
-                        PhoneConfiguration.setOpenAIAPIKey(newValue)
+                    .focused($isAPIKeyFocused)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        saveAPIKey()
+                        isAPIKeyFocused = false
+                    }
+                    .onChange(of: isAPIKeyFocused) { wasFocused, isFocused in
+                        if wasFocused, !isFocused {
+                            saveAPIKey()
+                        }
                     }
 
                 Button("Reset to build default") {
-                    apiKey = PhoneConfiguration.defaultOpenAIAPIKey
+                    let defaultKey = PhoneConfiguration.defaultOpenAIAPIKey
+                    apiKey = defaultKey
+                    saveAPIKey(defaultKey)
                 }
                 .disabled(PhoneConfiguration.defaultOpenAIAPIKey.isEmpty)
             } header: {
@@ -44,6 +59,13 @@ struct PhoneSettingsView: View {
             }
 
             Section {
+                Picker("Model", selection: $realtimeModel) {
+                    ForEach(RealtimeModelOption.allCases) { option in
+                        Text(option.displayName).tag(option.rawValue)
+                    }
+                }
+                .pickerStyle(.navigationLink)
+
                 Picker("Voice", selection: $realtimeVoice) {
                     ForEach(PhoneConfiguration.availableVoices, id: \.self) { name in
                         Text(name.capitalized).tag(name)
@@ -60,10 +82,17 @@ struct PhoneSettingsView: View {
             } header: {
                 Text("Fast Mode")
             } footer: {
-                Text("Voice changes can apply during a live Fast Mode session. Turn-taking controls how quickly the assistant decides your turn has ended.")
+                Text("Realtime 2.1 gives the best voice quality; Mini favors cost and latency. Model changes apply to the next session. Voice and turn-taking can update live.")
             }
 
             Section {
+                Picker("Model", selection: $thinkModel) {
+                    ForEach(ThinkModelOption.allCases) { option in
+                        Text(option.displayName).tag(option.rawValue)
+                    }
+                }
+                .pickerStyle(.navigationLink)
+
                 Picker("Voice", selection: $thinkVoice) {
                     ForEach(PhoneConfiguration.availableTTSVoices, id: \.self) { name in
                         Text(name.capitalized).tag(name)
@@ -80,7 +109,20 @@ struct PhoneSettingsView: View {
             } header: {
                 Text("Think Mode")
             } footer: {
-                Text("Higher reasoning may improve hard answers, but it starts speaking later.")
+                Text("Terra is balanced, Sol is most capable, and Luna is fastest. Higher reasoning may improve hard answers, but it starts speaking later.")
+            }
+
+            Section {
+                Picker("Model", selection: $transcriptionModel) {
+                    ForEach(TranscriptionModelOption.allCases) { option in
+                        Text(option.displayName).tag(option.rawValue)
+                    }
+                }
+                .pickerStyle(.navigationLink)
+            } header: {
+                Text("Transcription")
+            } footer: {
+                Text("GPT Transcribe is the quality default. 4o Mini Transcribe reduces cost.")
             }
 
             Section {
@@ -112,6 +154,23 @@ struct PhoneSettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear {
+            saveAPIKey()
+        }
+    }
+
+    private func saveAPIKey() {
+        saveAPIKey(apiKey)
+    }
+
+    private func saveAPIKey(_ value: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != lastSavedAPIKey.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return
+        }
+
+        PhoneConfiguration.setOpenAIAPIKey(trimmed)
+        lastSavedAPIKey = trimmed
     }
 }
 

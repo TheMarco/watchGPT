@@ -23,10 +23,12 @@ Should feel close to ChatGPT Voice on a phone.
 
 Constants live in `WatchGPTPhone/Support/PhoneConfiguration.swift` and are sent via `session.update` from `PhoneRealtimeBridge.sendSessionUpdate()`:
 
-- `realtimeModel` (default `gpt-realtime` — the GA model; flip to `gpt-realtime-2` if your account has access and add `reasoning.effort` back to the session payload)
+- `realtimeModel` (default `gpt-realtime-2.1`; `gpt-realtime-2.1-mini` is the economy option selected in iPhone Settings)
 - `realtimeVoice` (default `marin`)
 - `realtimeEagerness` (default `low` / Patient — semantic VAD, configurable in iPhone Settings)
 - `realtimeInstructions` (system prompt)
+
+Think Mode uses `gpt-transcribe` by default for transcription, `gpt-5.6-terra` for balanced reasoning, and `gpt-4o-mini-tts` for speech. Settings can trade quality/cost with 4o Mini Transcribe, GPT-5.6 Sol, or GPT-5.6 Luna.
 
 ## Known risks
 

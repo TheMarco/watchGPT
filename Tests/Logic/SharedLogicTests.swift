@@ -1,5 +1,9 @@
 import XCTest
+#if SWIFT_PACKAGE
+@testable import WatchGPTCore
+#else
 @testable import WatchGPTPhone
+#endif
 
 final class SharedLogicTests: XCTestCase {
     func testWavHeaderIsWellFormed() {
@@ -17,12 +21,15 @@ final class SharedLogicTests: XCTestCase {
     }
 
     func testRealtimeMessageRoundTrip() {
-        let encoded = RealtimeMessage.encode(.start, payload: [
+        let sessionID = UUID()
+        let encoded = RealtimeMessage.encode(.start, sessionID: sessionID, sequence: 42, payload: [
             RealtimeMessageKey.automaticTurnDetection: true,
             RealtimeMessageKey.micSensitivity: MicSensitivity.low.rawValue
         ])
 
         XCTAssertEqual(RealtimeMessage.type(of: encoded), .start)
+        XCTAssertEqual(RealtimeMessage.sessionID(of: encoded), sessionID)
+        XCTAssertEqual(RealtimeMessage.sequence(of: encoded), 42)
         XCTAssertEqual(encoded[RealtimeMessageKey.automaticTurnDetection] as? Bool, true)
         XCTAssertEqual(encoded[RealtimeMessageKey.micSensitivity] as? String, "low")
     }
@@ -30,6 +37,26 @@ final class SharedLogicTests: XCTestCase {
     func testRealtimeMessageUnknownTypeIsNil() {
         XCTAssertNil(RealtimeMessage.type(of: [RealtimeMessageKey.type: "nope"]))
         XCTAssertNil(RealtimeMessage.type(of: [:]))
+    }
+
+    func testAudioEnvelopeRoundTripAndValidation() {
+        let sessionID = UUID()
+        let audio = Data([0x01, 0x02, 0x03, 0x04])
+        let encoded = RealtimeAudioEnvelope(
+            sessionID: sessionID,
+            sequence: 9,
+            audio: audio
+        ).encoded()
+
+        XCTAssertEqual(
+            RealtimeAudioEnvelope(encoded: encoded),
+            RealtimeAudioEnvelope(sessionID: sessionID, sequence: 9, audio: audio)
+        )
+        XCTAssertNil(RealtimeAudioEnvelope(encoded: Data([0x00, 0x01])))
+
+        var wrongVersion = encoded
+        wrongVersion[4] = 99
+        XCTAssertNil(RealtimeAudioEnvelope(encoded: wrongVersion))
     }
 
     func testMicSensitivityMapping() {

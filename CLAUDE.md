@@ -10,8 +10,8 @@ Repo: https://github.com/TheMarco/watchGPT.
 
 - The watch cannot reliably run the OpenAI WebSocket directly. The iPhone companion is required.
 - The watch app supports two voice engines. The user-facing names are **Fast Mode** and **Think Mode** (`VoiceEngine.displayName`); the underlying enum cases are `realtime` and `gpt5` and the persisted UserDefaults values are unchanged.
-  - **Fast Mode** (`realtime`): OpenAI `gpt-realtime` over a WebSocket held by the phone.
-  - **Think Mode** (`gpt5`): phone-side local speech detection, transcription, Responses API using `gpt-5.5` with iPhone-configurable reasoning effort, then TTS back to the watch.
+  - **Fast Mode** (`realtime`): OpenAI `gpt-realtime-2.1` by default (`gpt-realtime-2.1-mini` selectable) over a WebSocket held by the phone.
+  - **Think Mode** (`gpt5`): phone-side local speech detection, transcription, Responses API using GPT-5.6 Terra by default (Sol/Luna selectable), then TTS back to the watch.
 - **Web search is wired in both modes** and requires only the OpenAI key:
   - Think Mode passes `tools: [{type: "web_search"}]` and `tool_choice: "auto"` to the Responses API; OpenAI runs the search/fetch/synthesis server-side.
   - Fast Mode registers a single `web_search` function tool on `session.update`. The phone bridge listens for `response.output_item.done` with `item.type == "function_call"` and proxies to a Responses API call with OpenAI's hosted `web_search` tool (`Self.runResponsesWebSearch`, 25 s timeout), returning the synthesized `answer` string in `function_call_output`. No third-party API keys anywhere.
@@ -61,7 +61,7 @@ disconnected -> connecting -> connected <-> listening
 
 ## Layout
 
-- `WatchGPT/` - watchOS target, Swift 5, deployment target 11.0
+- `WatchGPT/` - watchOS target, Swift 6 with complete strict concurrency, deployment target 11.0
   - `WatchGPTApp.swift` - app entry, registers defaults.
   - `Views/ContentView.swift` - rounded-square main button UI (TimelineView-driven, AOD-aware, audio-reactive halo/ripples, `WatchBrandIcon` in idle/ready states), reachability/status top bar, transcript view, stop/settings controls.
   - `Views/RealtimeTranscriptBubble.swift` - watch transcript bubble styling shared by live/final transcript lines.
@@ -74,17 +74,20 @@ disconnected -> connecting -> connected <-> listening
   - `WatchGPT.entitlements` - HealthKit entitlement.
   - `Assets.xcassets/AppIcon.appiconset` - watch icon renditions generated from root `icon-watch.png`.
   - `Assets.xcassets/WatchBrandIcon.imageset` - in-app watch artwork copied from root `icon-watch.png`.
-- `WatchGPTPhone/` - iOS companion target, Swift 5, deployment target 17.0
+- `WatchGPTPhone/` - iOS companion target, Swift 6 with complete strict concurrency, deployment target 17.0
   - `WatchGPTPhoneApp.swift` - app entry, activates `PhoneRealtimeBridge`.
   - `Views/PhoneContentView.swift` - app-icon hero status card with TimelineView pulse, Help/About shortcuts, collapsible diagnostics panel, transcript list (insetGrouped, leading badges), iMessage-style chat-bubble detail view with usage metadata, and shared `PhoneAppIconImage`.
-  - `Views/PhoneSettingsView.swift` - OpenAI API key, default mode, per-mode voice, Fast Mode turn-taking, Think Mode reasoning, language picker, colorful `PhoneHelpView`, and `PhoneAboutView`.
+  - `Views/PhoneSettingsView.swift` - OpenAI API key, default mode, model/transcription selectors, per-mode voice, Fast Mode turn-taking, Think Mode reasoning, language picker, colorful `PhoneHelpView`, and `PhoneAboutView`.
   - `Services/PhoneRealtimeBridge.swift` - phone-side bridge for both engines, transcript persistence, OpenAI calls, keep-alive, and Fast Mode tool execution (`runWebSearchCall` via OpenAI Responses API).
   - `Support/PhoneConfiguration.swift` - model names, OpenAI API key (Keychain-backed, cached), voice config, endpoint builders, language enum, effective-instructions composition.
   - `Support/KeychainStore.swift` - minimal generic-password Keychain wrapper for the OpenAI API key.
   - `Support/OpenAIParsing.swift` - pure, non-isolated helpers: `OpenAIResponseParsing` (Responses output-text + web_search_call count), `RealtimeErrorClassifier` (fatal vs non-fatal), `ThinkTranscriptFilter` (hallucination filter). Unit tested.
+  - `Support/TranscriptModels.swift` - transcript session, line, and usage value types with backward-compatible decoding.
+  - `Support/TranscriptStore.swift` - actor-backed, atomic, protected Application Support transcript persistence with coalesced writes and legacy migration.
   - `Config/WatchGPTPhone.xcconfig` - committed; includes gitignored `LocalSecrets.xcconfig`.
-- `Tests/Logic/` - XCTest bundle (`WatchGPTLogicTests`, host = phone app, `@testable import WatchGPTPhone`) covering the pure logic above plus the message envelope, WAV builder, and sensitivity/volume mappings.
-- `Shared/RealtimeMessages.swift` - compact message envelope shared by both targets, plus the `VoiceEngine` enum (raw values `realtime`/`gpt5`, displayNames Fast Mode/Think Mode). Message types now include `cancelTurn`; keys include `micSensitivity`.
+- `Tests/Logic/` - XCTest coverage for parsing helpers, message/audio envelopes, the WAV builder, sensitivity/volume mappings, and transcript persistence. It runs through either the hosted app target or the portable `WatchGPTCore` Swift package.
+- `Shared/RealtimeMessages.swift` - compact session-scoped control envelope shared by both targets, plus the `VoiceEngine` enum (raw values `realtime`/`gpt5`, displayNames Fast Mode/Think Mode).
+- `Shared/RealtimeTransport.swift` - bounded binary audio envelope with session UUID and monotonic sequence number so stale packets cannot enter a later session.
 - `Shared/AudioSupport.swift` - shared audio helpers: `PCMWAV` (WAV builder), the `Data` little-endian/ASCII helpers, and the `MicSensitivity` (input gain + Think VAD threshold) and `OutputVolume` (playback gain) enums. Both enums live here so the phone can map the watch's preset to a VAD threshold.
 - `Shared/LiquidGlass.swift` - `View.glassSurface(in:tint:interactive:fallback:)` and `GlassGroup`. Applies real Liquid Glass (`glassEffect`/`GlassEffectContainer`) on iOS 26 / watchOS 26 and falls back to the supplied prior background below those versions. Used to convert the app's custom-drawn surfaces (cards, bubbles, pills, the watch orb base) to glass without regressing the iOS 17 / watchOS 11 floor.
 - `WatchGPT/Assets.xcassets/PhoneAppIcon.appiconset` - phone icon renditions generated from root `icon.png`.
@@ -100,18 +103,18 @@ Watch mic PCM16 -> WCSession data -> iPhone -> OpenAI Realtime WebSocket
 OpenAI PCM16 deltas -> iPhone -> WCSession data -> Watch playback
 ```
 
-- Model: `gpt-realtime`.
-- Endpoint: `wss://api.openai.com/v1/realtime?model=gpt-realtime`.
+- Model: `gpt-realtime-2.1` by default; `gpt-realtime-2.1-mini` is selectable.
+- Endpoint: `wss://api.openai.com/v1/realtime?model=<selected model>`.
 - Input/output audio: PCM16, 24 kHz mono.
 - Default voice: `marin`.
 - Realtime VAD:
   - hands-free uses semantic VAD with `create_response: true` and `interrupt_response: true`
   - push-to-talk sets `turn_detection: null` and sends `input_audio_buffer.commit` + `response.create` manually
 - Tools: `sendSessionUpdate` always registers a single `web_search` tool with `tool_choice: "auto"`. `runWebSearchCall` proxies to OpenAI's hosted `web_search` via the Responses API (`Self.runResponsesWebSearch`) and returns the synthesized `answer` string; the realtime model just speaks it.
-- `lastSentVoice` / `lastSentLanguage` / `lastSentVADEagerness` track config changes; the UserDefaults observer fires a fresh `session.update` mid-session when any change.
+- `lastSentVoice` / `lastSentLanguage` / `lastSentVADEagerness` / `lastSentTranscriptionModel` track config changes; the UserDefaults observer fires a fresh `session.update` mid-session when any change.
 - Audio deltas are buffered to roughly 9,600 bytes before sending back to the watch for lower latency.
 
-### Think Mode (GPT-5.5)
+### Think Mode (GPT-5.6)
 
 This is not realtime. It is a sequential pipeline on the phone:
 
@@ -121,9 +124,9 @@ Watch mic PCM16 -> WCSession data -> phone local VAD
 -> chunked WCSession data -> Watch playback
 ```
 
-- Text model: `gpt-5.5`.
+- Text model: `gpt-5.6-terra` by default; `gpt-5.6-sol` and `gpt-5.6-luna` are selectable.
 - Reasoning: `{ "effort": "low" }`.
-- Transcription model: `gpt-4o-mini-transcribe`. When a specific language is set, `language: "<iso>"` is added to the multipart upload.
+- Transcription model: `gpt-transcribe` by default, with `gpt-4o-mini-transcribe` as the lower-cost option. When a specific language is set, `language: "<iso>"` is added to the multipart upload.
 - TTS model: `gpt-4o-mini-tts`.
 - TTS voice uses the separate Think Mode voice picker and falls back to `coral`.
 - Web search: the Responses API call passes `tools: [{type: "web_search"}]` and `tool_choice: "auto"`. OpenAI runs the search, fetch, and synthesis server-side; we still parse `output_text` (or fall back to walking `output[].content[].text`).
@@ -137,16 +140,15 @@ Watch mic PCM16 -> WCSession data -> phone local VAD
 
 ## Transcript History
 
-The phone companion persists transcript sessions in `UserDefaults`.
+The phone companion persists transcript sessions through the `TranscriptStore` actor as atomically replaced JSON in protected Application Support storage.
 
-- Data models live in `PhoneRealtimeBridge.swift`:
+- Data models live in `WatchGPTPhone/Support/TranscriptModels.swift`:
   - `PhoneTranscriptSession`
   - `PhoneTranscriptLine`
-- Storage key: `WatchGPTPhone.transcriptSessions.v2`.
-- Legacy migration reads `WatchGPTPhone.transcriptLines.v1` if present.
+- Legacy migration reads `WatchGPTPhone.transcriptSessions.v2` or `WatchGPTPhone.transcriptLines.v1` from `UserDefaults`, writes the protected file, and removes the old values.
 - Each started voice session creates a new transcript session titled `<Engine.displayName> chat` (so `Fast Mode chat` or `Think Mode chat`). The single source of truth is `engine.displayName + " chat"`.
 - On the first user utterance, the title is replaced with a short local fallback title derived from the utterance. When the session ends, the phone asks OpenAI for compact transcript metadata and stores a better title plus one-sentence summary.
-- Session usage metadata is saved with each transcript: duration, approximate mic audio, OpenAI event count, web searches, reconnects, and engine.
+- Session usage metadata is saved with each transcript: duration, approximate mic audio, OpenAI event count, web searches, reconnects, token usage, and engine.
 - `PhoneContentView` shows session history (insetGrouped list with leading badges), an iMessage-style chat-bubble detail view (asymmetric corner bubbles, accent fill for user, material for assistant), copy/share via context menu, native swipe-to-delete with no extra confirmation, and a `Clear all` button in the section header that does confirm.
 - `PhoneAppIconImage` reads the bundled primary app icon via `CFBundleIcons` and falls back to a generated gradient symbol if needed. It is intentionally shared by the main hero and About screen.
 
@@ -167,12 +169,12 @@ This is the best currently implemented path for keeping watch execution alive. I
 ## Important Invariants
 
 - The OpenAI API key is the only required key, and it lives only on the iPhone, in the **Keychain** (`KeychainStore`, via `PhoneConfiguration.openAIAPIKey`/`setOpenAIAPIKey`). A one-time `migrateAPIKeyToKeychainIfNeeded()` moves any legacy plaintext UserDefaults key over and scrubs it. The build-default key (baked from xcconfig into Info.plist) is still the fallback. Both modes share the same OpenAI-hosted `web_search` backend — no third-party search/data keys.
-- All outbound OpenAI WebSocket frames go through one ordered async send queue (`startSendQueue`/`sendOpenAIEvent` yields to a single consumer). Do NOT send via ad-hoc `Task { webSocket.send(...) }` — protocol-ordered pairs (function_call_output → response.create, commit → response.create) depend on this ordering.
+- All outbound OpenAI WebSocket frames go through one bounded, ordered async send queue (`startSendQueue`/`sendOpenAIEvent` yields to a single consumer). Overflow or a send failure tears down the session rather than accumulating memory or silently dropping protocol frames.
 - The phone does NOT tear down a live session on a momentary `WCSession` reachability dip; `sessionReachabilityDidChange` debounces ~4 s (`reachabilityLossTask`) before `stopRealtime()`.
 - Recoverable OpenAI realtime `error` events (no-active-response, commit-empty, etc.) must NOT stop the watch session. `RealtimeErrorClassifier.isNonFatal` is a conservative allow-list; unknown errors still tear down.
 - The watch idle watchdog must not end a session while a turn is in flight (`awaitingAssistantResponse` or `awaitingResponseSince`), with a `maxAssistantWaitSeconds` (90 s) safety cap. Phone Think-Mode progress is sent as `.connectionStatus` heartbeats, which call `noteActivity()` on the watch.
 - Watch and iPhone apps both need to be running/reachable for live sessions.
-- `WCSession.sendMessageData` is used for raw audio bytes.
+- `WCSession.sendMessageData` carries `RealtimeAudioEnvelope` packets (session UUID + sequence + raw PCM); both peers reject stale, duplicate, malformed, or oversized packets.
 - `WCSession.sendMessage` is used for compact control/text messages.
 - `RealtimeMessageKey.type` is `"t"` and text is `"x"`.
 - Audio format is 24 kHz PCM16 mono in both directions.
@@ -302,9 +304,9 @@ Note: running tests / simulator builds may fail in this local environment becaus
 
 - Think Mode has been twitchy on-device. The current mitigation is local VAD debounce plus short-burst dropping, but it still needs real watch testing.
 - Think Mode "never speaks back" was likely caused by sending synthesized speech as one huge `sendMessageData` payload. It is now chunked/paced, but verify on device.
-- Fast Mode is still the smoother path. Think Mode is turn-based and will never feel as immediate as `gpt-realtime`, especially with web search adding another round-trip.
+- Fast Mode is still the smoother path. Think Mode is turn-based and will never feel as immediate as Realtime, especially with web search adding another round-trip.
 - The watch screen can still dim. Workout runtime helps process lifetime; the AOD-aware main button makes the dim state look intentional rather than broken.
-- If OpenAI rejects `gpt-5.5`, the user may not have API access to that model. The phone bridge should surface the API error.
+- If OpenAI rejects a selected GPT-5.6 or Realtime 2.1 model, the user may not have API access to that model. The phone bridge surfaces the API error and tears down cleanly.
 - Background pickup is limited. If the iPhone app is force-quit, the watch cannot revive it.
 - Reconnect during an in-flight turn can lose buffered audio. The UX should eventually surface "connection dropped, try again" more explicitly.
 - Web search latency in Fast Mode is 2-5 s (Responses API web_search round-trip) before the spoken reply starts; the realtime instructions tell the model to say a brief preamble ("Let me check.") before slow searches.

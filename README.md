@@ -1,6 +1,6 @@
 # WatchGPT
 
-Realtime ChatGPT voice for Apple Watch. Tap the main button, talk, hear the answer streamed back through the watch speaker. Two modes: **Fast Mode** (OpenAI's `gpt-realtime` for true streaming speech-to-speech) and **Think Mode** (a turn-based `gpt-5.5` pipeline for cases where you want the smarter, slower reasoning model).
+Realtime ChatGPT voice for Apple Watch. Tap the main button, talk, hear the answer streamed back through the watch speaker. Two modes: **Fast Mode** (OpenAI's `gpt-realtime-2.1` for true streaming speech-to-speech) and **Think Mode** (a turn-based GPT-5.6 pipeline for cases where you want slower, deeper reasoning).
 
 This is a **personal sideloading project**. There is no App Store build and there will not be one. You bring your own OpenAI API key, you build it yourself, you run it on your own watch.
 
@@ -22,8 +22,8 @@ The watch cannot reliably open arbitrary outbound WebSockets on its own. That's 
 
 ## Features
 
-- **Fast Mode** — OpenAI `gpt-realtime`, semantic VAD. Streaming speech-to-speech, conversational latency.
-- **Think Mode** — phone-side speech detection → transcription → Responses API (`gpt-5.5`, configurable reasoning effort) → TTS → playback. Multi-second latency per turn, but you get the smarter model.
+- **Fast Mode** — OpenAI `gpt-realtime-2.1` by default, with `gpt-realtime-2.1-mini` as a lower-cost option. Semantic VAD and streaming speech-to-speech keep latency conversational.
+- **Think Mode** — phone-side speech detection → transcription → Responses API (`gpt-5.6-terra` by default, with Sol and Luna selectable) → TTS → playback. Multi-second latency per turn, but deeper reasoning.
 - **Web search in both modes — no extra keys.** Both modes use OpenAI's hosted `web_search` server-side: Think Mode calls the Responses API directly, and Fast Mode registers a single `web_search` function tool that proxies to the same backend.
 - **Hands-free** by default. Push-to-talk available in watch settings.
 - **Voice barge-in toggle.** Off by default — half-duplex with tap-to-interrupt for quieter, less-echoey conversations. Flip it on if you want to interrupt the assistant by talking.
@@ -39,14 +39,27 @@ The watch cannot reliably open arbitrary outbound WebSockets on its own. That's 
 - **Workout runtime** keeps the watch process alive longer than a typical 30-second background tail.
 - **API key never touches the watch.**
 
+## Model policy
+
+The app keeps model choices centralized and exposes the useful quality/cost tradeoffs in iPhone Settings:
+
+| Workload | Default | Alternatives |
+| --- | --- | --- |
+| Fast Mode | [`gpt-realtime-2.1`](https://developers.openai.com/api/docs/models/gpt-realtime-2.1) | `gpt-realtime-2.1-mini` |
+| Think Mode | [`gpt-5.6-terra`](https://developers.openai.com/api/docs/models/gpt-5.6-terra) | `gpt-5.6-sol` for maximum capability; `gpt-5.6-luna` for economy |
+| Transcription | [`gpt-transcribe`](https://developers.openai.com/api/docs/models/gpt-transcribe) | `gpt-4o-mini-transcribe` for economy |
+| Think Mode speech | [`gpt-4o-mini-tts`](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts) | Voice is selectable; the speech model is fixed |
+
+Request, tool-call, queue, turn, and session limits are deliberately bounded to reduce the chance of accidental API spend during a personal session.
+
 ## Requirements
 
 - A Mac with Xcode 26 or newer (watchOS + iOS SDKs installed via Xcode → Settings → Components).
 - Apple Watch running watchOS 11 or newer, paired with an iPhone running iOS 17 or newer.
 - An Apple ID for code signing. A free personal team is fine for sideloading.
-- An OpenAI API key with access to `gpt-realtime`. If you want Think Mode, your account also needs access to `gpt-5.5`.
-- Node.js 20+ (only for the helper script that bakes your API key into the build).
-- Optional: [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) if you intend to add or rename source files.
+- An OpenAI API key with access to the models you select. Fast Mode defaults to `gpt-realtime-2.1`; Think Mode defaults to `gpt-5.6-terra`.
+- Node.js 20+ for the configuration and repeatable build commands.
+- Optional for source-layout changes: [Mint](https://github.com/yonaskolb/Mint) (`brew install mint`). The checked-in `Mintfile` pins XcodeGen 2.44.1 reproducibly.
 
 ## Install
 
@@ -82,8 +95,12 @@ open WatchGPT.xcodeproj
 If you ever change the file layout, regenerate the project:
 
 ```sh
-xcodegen generate
+brew install mint
+npm run tools:bootstrap
+npm run project:generate
 ```
+
+`npm run project:verify` checks that the committed Xcode project matches `project.yml` and the current source tree without rewriting the working copy.
 
 ### 4. Sign both targets
 
@@ -119,11 +136,12 @@ On the **watch**, hit the gear icon:
 
 On the **iPhone**, hit the gear icon:
 
-- **OpenAI API key** — paste here to override the baked value.
-- **Default mode** — Fast Mode (`gpt-realtime`) or Think Mode (`gpt-5.5`). The watch starts whichever mode is selected here.
-- **Fast Mode voice** — pick from 10 realtime voices. `marin` and `cedar` sound best with `gpt-realtime`.
+- **OpenAI API key** — paste here to store a runtime override in the iPhone Keychain.
+- **Default mode** — Fast Mode or Think Mode. The watch starts whichever mode is selected here.
+- **Fast Mode model and voice** — choose Realtime 2.1 or Realtime 2.1 Mini and pick from 10 realtime voices. `marin` and `cedar` are strong defaults.
 - **Fast Mode turn-taking** — Patient / Balanced / Quick semantic VAD eagerness.
-- **Think Mode voice and reasoning** — choose TTS voice and Low / Medium / High reasoning effort.
+- **Think Mode model, voice, and reasoning** — choose Terra / Sol / Luna, a TTS voice, and the reasoning effort.
+- **Transcription model** — use GPT Transcribe for quality or 4o Mini Transcribe for economy.
 - **Assistant language** — Auto (matches what you speak, falls back to English when uncertain) or pin to one of 38 languages.
 
 The iPhone companion main screen also includes **Help** and **About** shortcuts, plus a collapsible **Diagnostics** panel for live troubleshooting.
@@ -143,13 +161,28 @@ The most effective workaround Apple actually permits is starting a `HKWorkoutSes
 
 ## Privacy & bring-your-own-key
 
-- Your OpenAI API key never leaves your iPhone.
+- Your OpenAI API key is never sent to the watch; the iPhone uses it only to authenticate requests to OpenAI.
 - The watch holds no key, sends no requests to OpenAI directly, and only ever talks to your iPhone.
 - Audio and transcripts go from your iPhone to OpenAI under your account — you pay for usage, you're bound by [OpenAI's usage policies](https://openai.com/policies/usage-policies/).
-- Transcript history is saved locally on the iPhone (in `UserDefaults`). Nothing is uploaded anywhere except the calls to OpenAI you explicitly trigger.
+- Transcript history is saved as an atomically written, data-protected JSON file under the iPhone app's Application Support directory. Legacy `UserDefaults` history is migrated automatically.
 - Transcript titles and summaries are generated through your OpenAI key after sessions end.
 - There is no analytics, no telemetry, no remote logging. The only network traffic is `wss://api.openai.com/...` and `https://api.openai.com/...`.
 - Because the iPhone build embeds your API key, **never share an `.ipa`** of this app with anyone. Treat the build like the key itself.
+
+## Repeatable developer checks
+
+The repository provides noninteractive commands for the shared `WatchGPTPhone` scheme:
+
+```sh
+npm run project:verify  # Verify generated-project consistency
+npm run test:logic      # Run core logic and persistence tests on the host
+npm run build           # Unsigned generic-device build
+npm run analyze         # Unsigned static analysis
+npm run test:build      # Compile the hosted test bundle without launching a simulator
+WATCHGPT_TEST_DESTINATION='platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' npm run test:simulator
+```
+
+All Xcode commands use dedicated paths below `/tmp/watchgpt-derived-data`; they do not depend on signing credentials or the embedded API key. See [Development](docs/DEVELOPMENT.md) for details. GitHub Actions runs the same generation, build, analysis, and test checks.
 
 ## Known limitations
 

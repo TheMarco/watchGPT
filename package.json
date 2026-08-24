@@ -5,7 +5,15 @@
   "type": "module",
   "description": "Realtime ChatGPT voice for Apple Watch with iPhone companion.",
   "scripts": {
-    "configure:phone": "node scripts/configure-phone.js"
+    "configure:phone": "node scripts/configure-phone.js",
+    "tools:bootstrap": "mint bootstrap",
+    "project:generate": "sh scripts/project.sh generate",
+    "project:verify": "sh scripts/project.sh verify",
+    "build": "sh scripts/xcode.sh build",
+    "analyze": "sh scripts/xcode.sh analyze",
+    "test:logic": "CLANG_MODULE_CACHE_PATH=/tmp/watchgpt-module-cache SWIFTPM_MODULECACHE_OVERRIDE=/tmp/watchgpt-module-cache swift test --disable-sandbox --scratch-path /tmp/watchgpt-swiftpm",
+    "test:build": "sh scripts/xcode.sh test-build",
+    "test:simulator": "sh scripts/xcode.sh test"
   },
   "engines": {
     "node": ">=20"

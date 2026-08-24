@@ -3,9 +3,13 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var session = RealtimeVoiceSession()
     @State private var isShowingSettings = false
+    @State private var lastDraftAutoScrollAt = Date.distantPast
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppConfiguration.voiceBargeInKey) private var voiceBargeIn = false
+
+    private static let liveAssistantTranscriptID = "live-assistant-transcript"
 
     var body: some View {
         ZStack {
@@ -19,8 +23,10 @@ struct ContentView: View {
                     gradient: statusGradient,
                     tint: statusTint,
                     isActive: session.isConnected,
+                    isAutomaticConversationEnabled: session.isAutomaticConversationEnabled,
                     onPressDown: handleOrbPressDown,
-                    onPressUp: handleOrbPressUp
+                    onPressUp: handleOrbPressUp,
+                    onStop: session.stop
                 )
                 .frame(width: 76, height: 76)
                 .padding(.top, 2)
@@ -147,6 +153,7 @@ struct ContentView: View {
                                 text: session.latestAssistantTranscript
                             )
                         )
+                        .id(Self.liveAssistantTranscriptID)
                     }
                 }
                 .padding(.horizontal, 8)
@@ -174,11 +181,39 @@ struct ContentView: View {
                     }
             }
             .onChange(of: session.transcriptLines.count) { _, _ in
-                if let lastID = session.transcriptLines.last?.id {
-                    withAnimation(.smooth(duration: 0.24)) {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
+                if let lastID = latestTranscriptScrollID {
+                    scrollToBottom(lastID, using: proxy)
                 }
+            }
+            .onChange(of: session.latestAssistantTranscript) { _, draft in
+                guard !draft.isEmpty, session.phase == .speaking else {
+                    return
+                }
+
+                let now = Date()
+                guard now.timeIntervalSince(lastDraftAutoScrollAt) >= 0.15 else {
+                    return
+                }
+
+                lastDraftAutoScrollAt = now
+                scrollToBottom(Self.liveAssistantTranscriptID, using: proxy)
+            }
+        }
+    }
+
+    private var latestTranscriptScrollID: AnyHashable? {
+        if !session.latestAssistantTranscript.isEmpty, session.phase == .speaking {
+            return Self.liveAssistantTranscriptID
+        }
+        return session.transcriptLines.last?.id
+    }
+
+    private func scrollToBottom(_ id: AnyHashable, using proxy: ScrollViewProxy) {
+        if reduceMotion {
+            proxy.scrollTo(id, anchor: .bottom)
+        } else {
+            withAnimation(.smooth(duration: 0.24)) {
+                proxy.scrollTo(id, anchor: .bottom)
             }
         }
     }
@@ -244,7 +279,7 @@ struct ContentView: View {
                 .transition(.scale.combined(with: .opacity))
             }
         }
-        .animation(.smooth(duration: 0.22), value: session.isConnected)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: session.isConnected)
     }
 
     private var controlsHint: String {
@@ -283,7 +318,7 @@ struct ContentView: View {
     }
 
     private var background: some View {
-        let normalizedPeak = isLuminanceReduced
+        let normalizedPeak = (isLuminanceReduced || reduceMotion)
             ? 0
             : Double(min(1.0, session.lastInputPeak * 2.5))
         let baseHaloOpacity = isLuminanceReduced
@@ -310,8 +345,8 @@ struct ContentView: View {
                 .scaleEffect(haloScale)
                 .blur(radius: haloBlur)
                 .offset(y: -48)
-                .animation(.smooth(duration: 0.18), value: session.lastInputPeak)
-                .animation(.smooth(duration: 0.30), value: session.isConnected)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.18), value: session.lastInputPeak)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.30), value: session.isConnected)
 
             Circle()
                 .fill(statusTint.opacity(isLuminanceReduced ? 0 : 0.12))
@@ -400,11 +435,14 @@ private struct VoiceOrb: View {
     let gradient: LinearGradient
     let tint: Color
     let isActive: Bool
+    let isAutomaticConversationEnabled: Bool
     let onPressDown: () -> Void
     let onPressUp: () -> Void
+    let onStop: () -> Void
 
     @State private var isPressed = false
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var dimmedGradient: LinearGradient {
         LinearGradient(
@@ -415,9 +453,12 @@ private struct VoiceOrb: View {
     }
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(
+            minimumInterval: 1.0 / 30.0,
+            paused: !isActive || isLuminanceReduced || reduceMotion
+        )) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
-            let pulse = (isActive && !isLuminanceReduced) ? (sin(time * 2.6) + 1) / 2 : 0
+            let pulse = (isActive && !isLuminanceReduced && !reduceMotion) ? (sin(time * 2.6) + 1) / 2 : 0
             let ringScale = 1 + pulse * 0.12
             let activeGradient = isLuminanceReduced ? dimmedGradient : gradient
             let activeIcon = isLuminanceReduced ? "waveform" : iconName
@@ -480,11 +521,15 @@ private struct VoiceOrb: View {
                     Image(systemName: activeIcon)
                         .font(.system(size: 27, weight: .semibold))
                         .foregroundStyle(.white.opacity(isLuminanceReduced ? 0.78 : 1.0))
-                        .symbolEffect(.pulse, options: .repeating, value: !isLuminanceReduced && phase == .listening)
+                        .symbolEffect(
+                            .pulse,
+                            options: .repeating,
+                            value: !isLuminanceReduced && !reduceMotion && phase == .listening
+                        )
                 }
             }
             .scaleEffect(isPressed ? 0.92 : 1.0)
-            .animation(.spring(duration: 0.18), value: isPressed)
+            .animation(reduceMotion ? nil : .spring(duration: 0.18), value: isPressed)
         }
         .contentShape(Circle())
         .onLongPressGesture(
@@ -507,21 +552,92 @@ private struct VoiceOrb: View {
                 onPressUp()
             }
         }
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Voice control")
+        .accessibilityValue(accessibilityValue)
+        .accessibilityHint(accessibilityHint)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            performAccessibilityPrimaryAction()
+        }
+        .accessibilityActions {
+            Button(accessibilityPrimaryActionName) {
+                performAccessibilityPrimaryAction()
+            }
+
+            if isActive {
+                if accessibilityPrimaryActionName != "End session" {
+                    Button("End session") {
+                        onStop()
+                    }
+                }
+            }
+        }
     }
 
-    private var accessibilityLabel: String {
+    private var accessibilityValue: String {
+        switch phase {
+        case .disconnected:
+            return "Disconnected"
+        case .connecting:
+            return "Connecting"
+        case .connected:
+            return "Ready"
+        case .listening:
+            return "Listening"
+        case .speaking:
+            return "Replying"
+        }
+    }
+
+    private var accessibilityPrimaryActionName: String {
         switch phase {
         case .disconnected:
             return "Start session"
         case .connecting:
             return "Connecting"
         case .connected:
-            return "Voice session ready"
+            return isAutomaticConversationEnabled ? "Start listening" : "Start talking"
         case .listening:
-            return "Listening"
+            return isAutomaticConversationEnabled ? "End session" : "Send recording"
         case .speaking:
-            return "Replying"
+            return "Interrupt reply"
+        }
+    }
+
+    private var accessibilityHint: String {
+        switch phase {
+        case .disconnected:
+            return "Double-tap to start a voice session."
+        case .connecting:
+            return "Wait for the iPhone connection to finish."
+        case .connected:
+            if isAutomaticConversationEnabled {
+                return "Double-tap to resume hands-free listening."
+            }
+            return "Double-tap to start talking, then double-tap again to send."
+        case .listening:
+            if isAutomaticConversationEnabled {
+                return "Speak naturally, or double-tap to end the session."
+            }
+            return "Double-tap to send the recording."
+        case .speaking:
+            return "Double-tap to interrupt the reply."
+        }
+    }
+
+    private func performAccessibilityPrimaryAction() {
+        switch phase {
+        case .disconnected, .connected, .speaking:
+            onPressDown()
+        case .listening:
+            if isAutomaticConversationEnabled {
+                onStop()
+            } else {
+                onPressUp()
+            }
+        case .connecting:
+            break
         }
     }
 

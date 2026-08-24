@@ -3,15 +3,17 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		09555870C98FE239BE989C57 /* AudioSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF4BB1822B1F1EDC7D185D23 /* AudioSupport.swift */; };
+		09B16BB68A38FE100A8178C0 /* TranscriptStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F94FE086329A380760F5A2B0 /* TranscriptStore.swift */; };
 		0AFD49DA55FCD9534DA43327 /* RealtimeVoiceSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = F606194901DBCEB14E299D04 /* RealtimeVoiceSession.swift */; };
 		16A693BADE75A9C5F3685F88 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 82FECC0B63A41BCA479439C3 /* Assets.xcassets */; };
 		308F22188D6E829FEE261848 /* RealtimeMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE733AC4756CF4216F3721D7 /* RealtimeMessages.swift */; };
 		3EDF02182749E58B0BF35758 /* PhoneConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2CD629AA5CFB5B1F01DCBF8 /* PhoneConfiguration.swift */; };
+		5041AECAA7AD0A6ADCB9C024 /* TranscriptStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F610CCC0044D810FD9A6B56 /* TranscriptStoreTests.swift */; };
 		506D3AF53B9154C929176518 /* WatchGPTPhoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9912439D9B78572153C63A6F /* WatchGPTPhoneApp.swift */; };
 		5267D89DA87F8300DBA942E6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19B334EEB454E1D4B469D02 /* SettingsView.swift */; };
 		532870553778A481D5BC3163 /* RealtimeTranscriptLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3393270746CA1B5AEA63EC5 /* RealtimeTranscriptLine.swift */; };
@@ -21,18 +23,21 @@
 		679D5C75E78A16405BD248B2 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE54F03B8426E24FDD2E876C /* ContentView.swift */; };
 		73FE49C1507849E18CC2E767 /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 838EA55A18A2265A96D18A1F /* LiquidGlass.swift */; };
 		7416E1F08EF325350A958D15 /* WatchGPTApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 196D6B02407CD5B3265C6B0C /* WatchGPTApp.swift */; };
+		75DE347A91FD555E32D92580 /* RealtimeTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C87EE06DE7E1565E051F82A /* RealtimeTransport.swift */; };
 		7875A8A4AAAB0ED7C25F4BE0 /* PhoneSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29FAE9893890A110BC75B18F /* PhoneSettingsView.swift */; };
 		7899F52E30183A263869FF3C /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16E7A9D3BA77103A10FD78E7 /* AppConfiguration.swift */; };
 		794879D9E07A73269B089522 /* LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 8A48F5A9A2DC5A8B5A51E3E5 /* LICENSE.txt */; };
 		86A240FD58BBC7B3E7519497 /* OpenAIParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F303F6B717A981BA5207E1E /* OpenAIParsingTests.swift */; };
 		9381CECACE94A00341538CEA /* RealtimeMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE733AC4756CF4216F3721D7 /* RealtimeMessages.swift */; };
 		98FFB2E31BC1993194609AC0 /* PhoneRealtimeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E7EF3564C120FF7202DCC95 /* PhoneRealtimeBridge.swift */; };
+		9E2EC1E0214A5E5448B182A0 /* TranscriptModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C704876EC83F0555119768A8 /* TranscriptModels.swift */; };
 		A52A905EED17D554B29F91AA /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C4683EE196D5ACC0E06061 /* KeychainStore.swift */; };
 		A8FA9F4A6ED94F10D2508913 /* OpenAIParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348A37055D347EB6B3822BD8 /* OpenAIParsing.swift */; };
 		ACDEB31D5867794CE7C3307F /* WatchGPT.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5F864EA057EA60633EE8481E /* WatchGPT.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CDB294B281AD7D432F123F2E /* LiquidGlass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 838EA55A18A2265A96D18A1F /* LiquidGlass.swift */; };
 		E3FED1874FF09F50E1F44A9F /* RealtimeAudioIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E089FF3E8068FA7D6E698A /* RealtimeAudioIO.swift */; };
 		E9A358AB3484002590C7F9BA /* PhoneContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD120FC35747E9FE57304295 /* PhoneContentView.swift */; };
+		EE0E9466E074165A8F3D8F06 /* RealtimeTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C87EE06DE7E1565E051F82A /* RealtimeTransport.swift */; };
 		F31BE484BA50BB57497ED703 /* WatchGPTIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 451B5F8D0C1C802AA0E33D24 /* WatchGPTIntents.swift */; };
 		F9156B0BE10B8A97B6A59815 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 82FECC0B63A41BCA479439C3 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -76,6 +81,7 @@
 		2E7EF3564C120FF7202DCC95 /* PhoneRealtimeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneRealtimeBridge.swift; sourceTree = "<group>"; };
 		348A37055D347EB6B3822BD8 /* OpenAIParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIParsing.swift; sourceTree = "<group>"; };
 		38C4683EE196D5ACC0E06061 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		3F610CCC0044D810FD9A6B56 /* TranscriptStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStoreTests.swift; sourceTree = "<group>"; };
 		436F7D8C73FD27CCC94BA067 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		451B5F8D0C1C802AA0E33D24 /* WatchGPTIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchGPTIntents.swift; sourceTree = "<group>"; };
 		48F0396631101BBBCB76335B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -86,6 +92,7 @@
 		82FECC0B63A41BCA479439C3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		838EA55A18A2265A96D18A1F /* LiquidGlass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlass.swift; sourceTree = "<group>"; };
 		8A48F5A9A2DC5A8B5A51E3E5 /* LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE.txt; sourceTree = "<group>"; };
+		8C87EE06DE7E1565E051F82A /* RealtimeTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeTransport.swift; sourceTree = "<group>"; };
 		8F303F6B717A981BA5207E1E /* OpenAIParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIParsingTests.swift; sourceTree = "<group>"; };
 		9912439D9B78572153C63A6F /* WatchGPTPhoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchGPTPhoneApp.swift; sourceTree = "<group>"; };
 		A19B334EEB454E1D4B469D02 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -93,12 +100,14 @@
 		B61B2F2DEC7098A89614E623 /* WatchGPT.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = WatchGPT.xcconfig; sourceTree = "<group>"; };
 		BD120FC35747E9FE57304295 /* PhoneContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneContentView.swift; sourceTree = "<group>"; };
 		BE54F03B8426E24FDD2E876C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		C704876EC83F0555119768A8 /* TranscriptModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptModels.swift; sourceTree = "<group>"; };
 		CE733AC4756CF4216F3721D7 /* RealtimeMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeMessages.swift; sourceTree = "<group>"; };
 		CF4BB1822B1F1EDC7D185D23 /* AudioSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSupport.swift; sourceTree = "<group>"; };
 		D3393270746CA1B5AEA63EC5 /* RealtimeTranscriptLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeTranscriptLine.swift; sourceTree = "<group>"; };
 		D62AAF18566800FF16CF3D3F /* WatchGPT.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WatchGPT.entitlements; sourceTree = "<group>"; };
 		F5E089FF3E8068FA7D6E698A /* RealtimeAudioIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeAudioIO.swift; sourceTree = "<group>"; };
 		F606194901DBCEB14E299D04 /* RealtimeVoiceSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeVoiceSession.swift; sourceTree = "<group>"; };
+		F94FE086329A380760F5A2B0 /* TranscriptStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStore.swift; sourceTree = "<group>"; };
 		FE56B393EAA77578F13D9FCA /* SharedLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLogicTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -165,6 +174,7 @@
 			children = (
 				8F303F6B717A981BA5207E1E /* OpenAIParsingTests.swift */,
 				FE56B393EAA77578F13D9FCA /* SharedLogicTests.swift */,
+				3F610CCC0044D810FD9A6B56 /* TranscriptStoreTests.swift */,
 			);
 			name = Logic;
 			path = Tests/Logic;
@@ -202,6 +212,8 @@
 				38C4683EE196D5ACC0E06061 /* KeychainStore.swift */,
 				348A37055D347EB6B3822BD8 /* OpenAIParsing.swift */,
 				A2CD629AA5CFB5B1F01DCBF8 /* PhoneConfiguration.swift */,
+				C704876EC83F0555119768A8 /* TranscriptModels.swift */,
+				F94FE086329A380760F5A2B0 /* TranscriptStore.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -265,6 +277,7 @@
 				CF4BB1822B1F1EDC7D185D23 /* AudioSupport.swift */,
 				838EA55A18A2265A96D18A1F /* LiquidGlass.swift */,
 				CE733AC4756CF4216F3721D7 /* RealtimeMessages.swift */,
+				8C87EE06DE7E1565E051F82A /* RealtimeTransport.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -360,6 +373,7 @@
 			);
 			mainGroup = F1D95191CD50BC6379682CD5;
 			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -397,6 +411,7 @@
 			files = (
 				86A240FD58BBC7B3E7519497 /* OpenAIParsingTests.swift in Sources */,
 				5AC2117ADE8560027F1CCD10 /* SharedLogicTests.swift in Sources */,
+				5041AECAA7AD0A6ADCB9C024 /* TranscriptStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -413,6 +428,9 @@
 				98FFB2E31BC1993194609AC0 /* PhoneRealtimeBridge.swift in Sources */,
 				7875A8A4AAAB0ED7C25F4BE0 /* PhoneSettingsView.swift in Sources */,
 				9381CECACE94A00341538CEA /* RealtimeMessages.swift in Sources */,
+				75DE347A91FD555E32D92580 /* RealtimeTransport.swift in Sources */,
+				9E2EC1E0214A5E5448B182A0 /* TranscriptModels.swift in Sources */,
+				09B16BB68A38FE100A8178C0 /* TranscriptStore.swift in Sources */,
 				506D3AF53B9154C929176518 /* WatchGPTPhoneApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -429,6 +447,7 @@
 				308F22188D6E829FEE261848 /* RealtimeMessages.swift in Sources */,
 				5FB6FF8705F1B750BF68FE17 /* RealtimeTranscriptBubble.swift in Sources */,
 				532870553778A481D5BC3163 /* RealtimeTranscriptLine.swift in Sources */,
+				EE0E9466E074165A8F3D8F06 /* RealtimeTransport.swift in Sources */,
 				0AFD49DA55FCD9534DA43327 /* RealtimeVoiceSession.swift in Sources */,
 				5267D89DA87F8300DBA942E6 /* SettingsView.swift in Sources */,
 				7416E1F08EF325350A958D15 /* WatchGPTApp.swift in Sources */,
@@ -535,7 +554,8 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
 				WATCHOS_DEPLOYMENT_TARGET = 11.0;
 			};
 			name = Debug;
@@ -616,7 +636,8 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				SWIFT_VERSION = 5.0;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
 				WATCHOS_DEPLOYMENT_TARGET = 11.0;
 			};
 			name = Release;

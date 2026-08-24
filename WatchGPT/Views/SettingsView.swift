@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage(AppConfiguration.micSensitivityKey) private var micSensitivity = MicSensitivity.default.rawValue
     @AppStorage(AppConfiguration.outputVolumeKey) private var outputVolume = OutputVolume.default.rawValue
     @AppStorage(AppConfiguration.voiceBargeInKey) private var voiceBargeIn = false
+    @State private var showingClearDisplayConfirmation = false
 
     let onReset: () -> Void
 
@@ -64,16 +65,24 @@ struct SettingsView: View {
 
             Section {
                 Button(role: .destructive) {
-                    onReset()
+                    showingClearDisplayConfirmation = true
                 } label: {
-                    Label("Clear chat", systemImage: "trash")
+                    Label("Clear watch display", systemImage: "trash")
                 }
             } footer: {
-                Text("Set the OpenAI API key in WatchGPT on your iPhone.")
+                Text("Clears the conversation shown on this watch. Saved transcripts on your iPhone are not deleted.")
             }
         }
         .listStyle(.carousel)
         .navigationTitle("Settings")
+        .alert("Clear watch display?", isPresented: $showingClearDisplayConfirmation) {
+            Button("Clear", role: .destructive) {
+                onReset()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This clears only the conversation shown on the watch. Saved iPhone transcripts remain available.")
+        }
     }
 }
 

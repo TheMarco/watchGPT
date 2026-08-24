@@ -1,5 +1,9 @@
 import XCTest
+#if SWIFT_PACKAGE
+@testable import WatchGPTCore
+#else
 @testable import WatchGPTPhone
+#endif
 
 final class OpenAIParsingTests: XCTestCase {
     func testOutputTextConvenienceField() {

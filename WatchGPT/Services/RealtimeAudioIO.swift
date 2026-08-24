@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 
 enum RealtimeAudioIOError: LocalizedError {
@@ -15,7 +15,7 @@ enum RealtimeAudioIOError: LocalizedError {
     }
 }
 
-final class RealtimeAudioIO {
+final class RealtimeAudioIO: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
     private let playbackFormat = AVAudioFormat(
@@ -116,6 +116,7 @@ final class RealtimeAudioIO {
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            try? session.setActive(false, options: [.notifyOthersOnDeactivation])
             throw RealtimeAudioIOError.inputFormatUnavailable
         }
 
@@ -150,7 +151,13 @@ final class RealtimeAudioIO {
             }
         }
 
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            try? session.setActive(false, options: [.notifyOthersOnDeactivation])
+            throw error
+        }
         playerNode.play()
         isStarted = true
 
@@ -191,6 +198,10 @@ final class RealtimeAudioIO {
 
     func stop() {
         guard isStarted else {
+            try? AVAudioSession.sharedInstance().setActive(
+                false,
+                options: [.notifyOthersOnDeactivation]
+            )
             return
         }
 
@@ -210,6 +221,10 @@ final class RealtimeAudioIO {
         audioOutLock.unlock()
 
         isStarted = false
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: [.notifyOthersOnDeactivation]
+        )
     }
 
     var isEngineRunning: Bool {
@@ -354,16 +369,10 @@ final class RealtimeAudioIO {
             return nil
         }
 
-        var consumed = false
+        let inputBox = AudioConverterInputBox(input)
         var conversionError: NSError?
         let status = resampler.convert(to: output, error: &conversionError) { _, inputStatus in
-            if consumed {
-                inputStatus.pointee = .noDataNow
-                return nil
-            }
-            consumed = true
-            inputStatus.pointee = .haveData
-            return input
+            inputBox.take(status: inputStatus)
         }
 
         guard status != .error, conversionError == nil, output.frameLength > 0 else {
@@ -389,5 +398,28 @@ final class RealtimeAudioIO {
         // overflows and clipping saturates smoothly instead of wrapping.
         let limited = tanhf(sample * gain)
         return Int16(limited * Float(Int16.max))
+    }
+}
+
+private final class AudioConverterInputBox: @unchecked Sendable {
+    private let buffer: AVAudioPCMBuffer
+    private let lock = NSLock()
+    private var consumed = false
+
+    init(_ buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
+    }
+
+    func take(status: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !consumed else {
+            status.pointee = .noDataNow
+            return nil
+        }
+        consumed = true
+        status.pointee = .haveData
+        return buffer
     }
 }

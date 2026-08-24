@@ -7,6 +7,7 @@ WatchGPTPhone/Config/LocalSecrets.xcconfig
 
 DerivedData/
 build/
+.build/
 *.xcuserstate
 xcuserdata/
 *.moved-aside

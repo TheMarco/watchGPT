@@ -5,6 +5,7 @@ struct PhoneContentView: View {
     @ObservedObject private var bridge = PhoneRealtimeBridge.shared
     @State private var showingClearConfirmation = false
     @State private var isDiagnosticsExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack {
@@ -40,8 +41,8 @@ struct PhoneContentView: View {
             } message: {
                 Text("This will permanently remove every saved transcript.")
             }
-            .animation(.smooth(duration: 0.35), value: bridge.isActive)
-            .animation(.smooth(duration: 0.25), value: bridge.statusText)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: bridge.isActive)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: bridge.statusText)
         }
     }
 
@@ -54,18 +55,21 @@ struct PhoneContentView: View {
                 } label: {
                     Image(systemName: "questionmark.circle")
                 }
+                .accessibilityLabel("Help")
 
                 NavigationLink {
                     PhoneAboutView()
                 } label: {
                     Image(systemName: "info.circle")
                 }
+                .accessibilityLabel("About WatchGPT")
 
                 NavigationLink {
                     PhoneSettingsView()
                 } label: {
                     Image(systemName: "gearshape")
                 }
+                .accessibilityLabel("Settings")
             }
         }
     }
@@ -134,8 +138,8 @@ struct PhoneContentView: View {
     }
 
     private var heroIcon: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !bridge.isActive)) { timeline in
-            let phase = bridge.isActive
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !bridge.isActive || reduceMotion)) { timeline in
+            let phase = bridge.isActive && !reduceMotion
                 ? (sin(timeline.date.timeIntervalSinceReferenceDate * 2.2) + 1) / 2
                 : 0.0
 
@@ -279,8 +283,12 @@ struct PhoneContentView: View {
     private var diagnosticsPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.smooth(duration: 0.24)) {
+                if reduceMotion {
                     isDiagnosticsExpanded.toggle()
+                } else {
+                    withAnimation(.smooth(duration: 0.24)) {
+                        isDiagnosticsExpanded.toggle()
+                    }
                 }
             } label: {
                 HStack {
@@ -306,6 +314,8 @@ struct PhoneContentView: View {
                     diagnostic("Reconnects", "\(bridge.reconnectCount)")
                     diagnostic("Mic peak", String(format: "%.2f", bridge.lastWatchInputPeak))
                     diagnostic("Watch chunks", "\(bridge.audioChunksFromWatch)")
+                    diagnostic("Input tokens", "\(bridge.inputTokens)")
+                    diagnostic("Output tokens", "\(bridge.outputTokens)")
                 }
 
                 if let reconnect = bridge.lastReconnectMessage {
@@ -493,11 +503,13 @@ struct PhoneTranscriptDetailView: View {
                 } label: {
                     Image(systemName: "doc.on.doc")
                 }
+                .accessibilityLabel("Copy transcript")
                 .disabled(currentSession.lines.isEmpty)
 
                 ShareLink(item: transcriptText) {
                     Image(systemName: "square.and.arrow.up")
                 }
+                .accessibilityLabel("Share transcript")
                 .disabled(currentSession.lines.isEmpty)
 
                 Button(role: .destructive) {
@@ -505,6 +517,7 @@ struct PhoneTranscriptDetailView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
+                .accessibilityLabel("Delete transcript")
             }
         }
         .confirmationDialog(
@@ -591,6 +604,8 @@ struct PhoneTranscriptDetailView: View {
                 usageTile("Searches", "\(currentSession.usage.webSearchCount)")
                 usageTile("Reconnects", "\(currentSession.usage.reconnectCount)")
                 usageTile("Approx mic", formattedDuration(currentSession.usage.audioChunksFromWatch / 5))
+                usageTile("Input tokens", "\(currentSession.usage.inputTokens)")
+                usageTile("Output tokens", "\(currentSession.usage.outputTokens)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -636,7 +651,9 @@ struct PhoneTranscriptDetailView: View {
             "Duration: \(formattedDuration(currentSession.usage.durationSeconds))",
             "Approx mic audio: \(formattedDuration(currentSession.usage.audioChunksFromWatch / 5))",
             "Searches: \(currentSession.usage.webSearchCount)",
-            "Reconnects: \(currentSession.usage.reconnectCount)"
+            "Reconnects: \(currentSession.usage.reconnectCount)",
+            "Input tokens: \(currentSession.usage.inputTokens)",
+            "Output tokens: \(currentSession.usage.outputTokens)"
         ]
         .compactMap { $0 }
         .joined(separator: "\n")

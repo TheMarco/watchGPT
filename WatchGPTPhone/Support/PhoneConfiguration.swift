@@ -197,17 +197,89 @@ enum RealtimeVADEagerness: String, CaseIterable, Identifiable {
 }
 
 enum ReasoningEffort: String, CaseIterable, Identifiable {
+    case none
     case low
     case medium
     case high
+    case xhigh
+    case max
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
+        case .none: return "None"
         case .low: return "Low"
         case .medium: return "Medium"
         case .high: return "High"
+        case .xhigh: return "Extra High"
+        case .max: return "Maximum"
+        }
+    }
+}
+
+enum RealtimeModelOption: String, CaseIterable, Identifiable {
+    case full = "gpt-realtime-2.1"
+    case mini = "gpt-realtime-2.1-mini"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .full: return "Realtime 2.1"
+        case .mini: return "Realtime 2.1 Mini"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .full: return "Best realtime voice quality."
+        case .mini: return "Lower cost and latency."
+        }
+    }
+}
+
+enum ThinkModelOption: String, CaseIterable, Identifiable {
+    case terra = "gpt-5.6-terra"
+    case sol = "gpt-5.6-sol"
+    case luna = "gpt-5.6-luna"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .terra: return "GPT-5.6 Terra"
+        case .sol: return "GPT-5.6 Sol"
+        case .luna: return "GPT-5.6 Luna"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .terra: return "Balanced quality, speed, and cost."
+        case .sol: return "Highest capability for difficult questions."
+        case .luna: return "Fastest and most economical."
+        }
+    }
+}
+
+enum TranscriptionModelOption: String, CaseIterable, Identifiable {
+    case quality = "gpt-transcribe"
+    case mini = "gpt-4o-mini-transcribe"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .quality: return "GPT Transcribe"
+        case .mini: return "4o Mini Transcribe"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .quality: return "Best transcription quality."
+        case .mini: return "Lower-cost transcription."
         }
     }
 }
@@ -220,6 +292,9 @@ enum PhoneConfiguration {
     static let realtimeVADEagernessKey = "openAIRealtimeVADEagerness"
     static let regularReasoningEffortKey = "openAIRegularReasoningEffort"
     static let assistantLanguageKey = "openAIAssistantLanguage"
+    static let realtimeModelKey = "openAIRealtimeModel"
+    static let thinkModelKey = "openAIThinkModel"
+    static let transcriptionModelKey = "openAITranscriptionModel"
     static let availableVoices = [
         "alloy",
         "ash",
@@ -248,11 +323,17 @@ enum PhoneConfiguration {
         "shimmer",
         "verse"
     ]
-    static let realtimeModel = "gpt-realtime"
-    static let regularVoiceModel = "gpt-5.5"
-    static let transcriptionModel = "gpt-4o-mini-transcribe"
     static let ttsModel = "gpt-4o-mini-tts"
-    static let transcriptMetadataModel = "gpt-4.1-mini"
+    static let transcriptMetadataModel = ThinkModelOption.luna.rawValue
+    static let realtimeMaxOutputTokens = 768
+    static let thinkMaxOutputTokens = 1_600
+    static let webSearchMaxOutputTokens = 500
+    static let metadataMaxOutputTokens = 180
+    static let maxToolCallsPerThinkTurn = 2
+    static let maxRealtimeWebSearchCallsPerSession = 4
+    static let maxSessionDuration: TimeInterval = 10 * 60
+    static let maxThinkTurnDuration: TimeInterval = 60
+    static let maxSocketQueueDepth = 64
     static let realtimeInstructions =
         "You are WatchGPT, a fast, warm realtime voice assistant running on Apple Watch. Match the user's spoken language whenever you are confident which language it is. If there is any uncertainty — short utterances, unfamiliar accents, background noise, silent input — respond in English. Do not speak any language other than English unless you have clearly heard the user speak that language in this session. Never switch to a third language unprompted. You only receive microphone audio and text transcripts from the user. You have no camera, no screen view, no GPS, and no device sensors, so never claim you can see the user or read their device's current location, heart rate, or surroundings. This does NOT limit what you can look up: when the user names a place (a city, address, region, or landmark), you absolutely can and should answer questions about its weather, time, news, etc., using your tools. If the user asks about \"my location\" or \"here\" without naming a place, ask them to tell you the city or area first. If asked what you can perceive directly, say you can hear the user's voice only. Speak naturally, keep replies concise unless asked for depth, and avoid long lists unless they are genuinely useful."
 
@@ -265,10 +346,25 @@ enum PhoneConfiguration {
     // Keychain repeatedly. Guarded because the getter is read off the main actor
     // too. Invalidated whenever the key is changed.
     private static let apiKeyLock = NSLock()
-    private static var cachedAPIKey: String?
+    nonisolated(unsafe) private static var cachedAPIKey: String?
 
     static var realtimeEndpointURL: URL? {
         URL(string: "wss://api.openai.com/v1/realtime?model=\(realtimeModel)")
+    }
+
+    static var realtimeModel: String {
+        let raw = UserDefaults.standard.string(forKey: realtimeModelKey) ?? RealtimeModelOption.full.rawValue
+        return RealtimeModelOption(rawValue: raw)?.rawValue ?? RealtimeModelOption.full.rawValue
+    }
+
+    static var regularVoiceModel: String {
+        let raw = UserDefaults.standard.string(forKey: thinkModelKey) ?? ThinkModelOption.terra.rawValue
+        return ThinkModelOption(rawValue: raw)?.rawValue ?? ThinkModelOption.terra.rawValue
+    }
+
+    static var transcriptionModel: String {
+        let raw = UserDefaults.standard.string(forKey: transcriptionModelKey) ?? TranscriptionModelOption.quality.rawValue
+        return TranscriptionModelOption(rawValue: raw)?.rawValue ?? TranscriptionModelOption.quality.rawValue
     }
 
     static var defaultOpenAIAPIKey: String {
@@ -309,15 +405,27 @@ enum PhoneConfiguration {
     static func migrateAPIKeyToKeychainIfNeeded() {
         let legacy = UserDefaults.standard.string(forKey: openAIAPIKeyKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let existingKey = KeychainStore.string(
+            service: keychainService,
+            account: keychainAPIKeyAccount
+        )
+        var migrationSucceeded = legacy.isEmpty || legacy == defaultOpenAIAPIKey || existingKey != nil
 
         if !legacy.isEmpty,
            legacy != defaultOpenAIAPIKey,
-           KeychainStore.string(service: keychainService, account: keychainAPIKeyAccount) == nil
+           existingKey == nil
         {
-            KeychainStore.set(legacy, service: keychainService, account: keychainAPIKeyAccount)
+            migrationSucceeded = KeychainStore.set(
+                legacy,
+                service: keychainService,
+                account: keychainAPIKeyAccount
+            )
         }
 
-        UserDefaults.standard.removeObject(forKey: openAIAPIKeyKey)
+        // Never destroy the only copy if Keychain storage is unavailable.
+        if migrationSucceeded {
+            UserDefaults.standard.removeObject(forKey: openAIAPIKeyKey)
+        }
 
         apiKeyLock.lock()
         cachedAPIKey = nil
@@ -385,7 +493,10 @@ enum PhoneConfiguration {
             thinkVoiceKey: defaultThinkVoice,
             realtimeVADEagernessKey: RealtimeVADEagerness.low.rawValue,
             regularReasoningEffortKey: ReasoningEffort.low.rawValue,
-            assistantLanguageKey: AssistantLanguage.auto.rawValue
+            assistantLanguageKey: AssistantLanguage.auto.rawValue,
+            realtimeModelKey: RealtimeModelOption.full.rawValue,
+            thinkModelKey: ThinkModelOption.terra.rawValue,
+            transcriptionModelKey: TranscriptionModelOption.quality.rawValue
         ])
     }
 

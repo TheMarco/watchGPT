@@ -85,6 +85,14 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
     private var assistantWaitStartedAt: Date?
     private var lastAudioLevelSentAt = Date.distantPast
+    private var activeSessionID: UUID?
+    private var nextControlSequence: UInt64 = 0
+    private var nextAudioSequence: UInt64 = 0
+    private var lastPhoneControlSequence: UInt64?
+    private var lastPhoneAudioSequence: UInt64?
+    private var sessionStartedAt: Date?
+    private var consecutiveDeliveryFailures = 0
+    private let maxSessionDuration: TimeInterval = 10 * 60
 
     override init() {
         wcSession = WCSession.isSupported() ? WCSession.default : nil
@@ -145,6 +153,13 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         }
 
         phase = .connecting
+        activeSessionID = UUID()
+        nextControlSequence = 0
+        nextAudioSequence = 0
+        lastPhoneControlSequence = nil
+        lastPhoneAudioSequence = nil
+        sessionStartedAt = Date()
+        consecutiveDeliveryFailures = 0
         errorMessage = nil
         latestUserTranscript = ""
         latestAssistantTranscript = ""
@@ -191,11 +206,7 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
 
     func stop() {
-        wcSession?.sendMessage(
-            RealtimeMessage.encode(.stop),
-            replyHandler: nil,
-            errorHandler: nil
-        )
+        sendControlToPhone(.stop, reportsFailure: false)
 
         audioIO.stop()
         runtimeKeeper.stop()
@@ -205,23 +216,54 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         assistantPlaybackStartedAt = .distantPast
         lastInputPeak = 0
         awaitingAssistantResponse = false
+        activeSessionID = nil
+        sessionStartedAt = nil
+        lastPhoneControlSequence = nil
+        lastPhoneAudioSequence = nil
         phase = .disconnected
     }
 
     private func sendStartToPhone() {
-        wcSession?.sendMessage(
-            RealtimeMessage.encode(.start, payload: [
+        sendControlToPhone(
+            .start,
+            payload: [
                 RealtimeMessageKey.automaticTurnDetection: automaticConversationEnabledForSession,
                 RealtimeMessageKey.micSensitivity: AppConfiguration.micSensitivity.rawValue
-            ]),
-            replyHandler: nil,
-            errorHandler: { [weak self] error in
-                Task { @MainActor in
-                    self?.errorMessage = "Could not reach iPhone: \(error.localizedDescription)"
-                    self?.stop()
-                }
-            }
+            ],
+            failurePrefix: "Could not reach iPhone",
+            reportsFailure: true
         )
+    }
+
+    private func sendControlToPhone(
+        _ type: RealtimeMessageType,
+        payload: [String: Any] = [:],
+        failurePrefix: String = "iPhone delivery failed",
+        reportsFailure: Bool
+    ) {
+        guard let wcSession, let sessionID = activeSessionID else {
+            return
+        }
+
+        let sequence = nextControlSequence
+        nextControlSequence &+= 1
+        let message = RealtimeMessage.encode(
+            type,
+            sessionID: sessionID,
+            sequence: sequence,
+            payload: payload
+        )
+        wcSession.sendMessage(message, replyHandler: nil) { [weak self] error in
+            guard reportsFailure else {
+                print("[WatchGPT] \(type.rawValue) delivery failed: \(error.localizedDescription)")
+                return
+            }
+            Task { @MainActor [weak self] in
+                guard let self, self.activeSessionID == sessionID else { return }
+                self.errorMessage = "\(failurePrefix): \(error.localizedDescription)"
+                self.stop()
+            }
+        }
     }
 
     func resetTranscript() {
@@ -239,10 +281,10 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         // handles interruption itself, so this is gpt5-only. Harmless no-op when
         // no turn is running.
         if voiceEngineForSession == .gpt5 {
-            wcSession?.sendMessage(
-                RealtimeMessage.encode(.cancelTurn),
-                replyHandler: nil,
-                errorHandler: nil
+            sendControlToPhone(
+                .cancelTurn,
+                failurePrefix: "Could not interrupt Think Mode",
+                reportsFailure: true
             )
         }
 
@@ -298,6 +340,14 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
 
     private func checkForStuckPhase() {
         let elapsed = Date().timeIntervalSince(phaseEnteredAt)
+
+        if let sessionStartedAt,
+           Date().timeIntervalSince(sessionStartedAt) >= maxSessionDuration
+        {
+            errorMessage = "The 10-minute session limit was reached. Start a new session to continue."
+            stop()
+            return
+        }
 
         if let waitingStart = awaitingResponseSince,
            Date().timeIntervalSince(waitingStart) > responseTimeout
@@ -357,24 +407,24 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         phase = .connected
         awaitingResponseSince = Date()
 
-        guard let wcSession else { return }
-
-        wcSession.sendMessage(
-            RealtimeMessage.encode(.commit),
-            replyHandler: nil,
-            errorHandler: { [weak self] error in
-                Task { @MainActor in
-                    self?.errorMessage = "Commit failed: \(error.localizedDescription)"
-                    self?.awaitingResponseSince = nil
-                }
-            }
+        sendControlToPhone(
+            .commit,
+            failurePrefix: "Commit failed",
+            reportsFailure: true
         )
     }
 
     private func handlePhoneMessage(_ message: [String: Any]) {
-        guard let type = RealtimeMessage.type(of: message) else {
+        guard let type = RealtimeMessage.type(of: message),
+              let sessionID = RealtimeMessage.sessionID(of: message),
+              sessionID == activeSessionID,
+              let sequence = RealtimeMessage.sequence(of: message),
+              lastPhoneControlSequence.map({ sequence > $0 }) ?? true
+        else {
             return
         }
+        lastPhoneControlSequence = sequence
+        consecutiveDeliveryFailures = 0
 
         switch type {
         case .ready:
@@ -454,11 +504,20 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
     }
 
     private func handlePhoneAudio(_ data: Data) {
+        guard let envelope = RealtimeAudioEnvelope(encoded: data),
+              envelope.sessionID == activeSessionID,
+              lastPhoneAudioSequence.map({ envelope.sequence > $0 }) ?? true
+        else {
+            return
+        }
+        lastPhoneAudioSequence = envelope.sequence
+        consecutiveDeliveryFailures = 0
+
         if (!isAutomaticConversationEnabled && phase == .listening) || phase == .disconnected {
             return
         }
         awaitingResponseSince = nil
-        playAssistantAudio(data, prefersOneShotPlayer: false)
+        playAssistantAudio(envelope.audio, prefersOneShotPlayer: false)
     }
 
     private func sendInputAudio(_ data: Data, inputPeak: Float) {
@@ -467,6 +526,9 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         }
 
         lastInputPeak = inputPeak
+        if inputPeak >= 0.015 {
+            noteActivity()
+        }
 
         if isAutomaticConversationEnabled {
             if voiceEngineForSession == .gpt5, phase == .speaking {
@@ -508,7 +570,25 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
             return
         }
 
-        wcSession.sendMessageData(data, replyHandler: nil, errorHandler: nil)
+        guard let sessionID = activeSessionID else {
+            return
+        }
+        let sequence = nextAudioSequence
+        nextAudioSequence &+= 1
+        let envelope = RealtimeAudioEnvelope(
+            sessionID: sessionID,
+            sequence: sequence,
+            audio: data
+        ).encoded()
+        wcSession.sendMessageData(envelope, replyHandler: nil) { [weak self] error in
+            Task { @MainActor [weak self] in
+                guard let self, self.activeSessionID == sessionID else { return }
+                self.consecutiveDeliveryFailures += 1
+                guard self.consecutiveDeliveryFailures >= 3 else { return }
+                self.errorMessage = "Audio delivery to iPhone failed: \(error.localizedDescription)"
+                self.stop()
+            }
+        }
 
         // The mic level only drives a diagnostics readout on the phone, so it
         // doesn't need to ship with every ~0.2 s audio chunk. Throttling it keeps
@@ -516,12 +596,12 @@ final class RealtimeVoiceSession: NSObject, ObservableObject {
         let now = Date()
         if now.timeIntervalSince(lastAudioLevelSentAt) >= 0.4 {
             lastAudioLevelSentAt = now
-            wcSession.sendMessage(
-                RealtimeMessage.encode(.watchAudioLevel, payload: [
+            sendControlToPhone(
+                .watchAudioLevel,
+                payload: [
                     RealtimeMessageKey.text: String(format: "%.4f", inputPeak)
-                ]),
-                replyHandler: nil,
-                errorHandler: nil
+                ],
+                reportsFailure: false
             )
         }
     }
@@ -656,8 +736,9 @@ extension RealtimeVoiceSession: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        let snapshot = RealtimeControlMessage(message)
         Task { @MainActor [weak self] in
-            self?.handlePhoneMessage(message)
+            self?.handlePhoneMessage(snapshot.value)
         }
     }
 

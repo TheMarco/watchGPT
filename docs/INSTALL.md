@@ -5,7 +5,7 @@ WatchGPT has two targets: a watchOS app and an iOS companion. The iPhone compani
 ## 1. Provide your OpenAI key
 
 ```sh
-cd /Users/marcovhv/projects/GIT/watchGPT
+cd watchGPT
 echo "OPENAI_API_KEY=sk-your-key-here" > .env
 npm run configure:phone
 ```
@@ -48,7 +48,20 @@ If the watch shows "Open WatchGPT on your iPhone," the iPhone app got suspended 
 
 ## Overriding the key at runtime
 
-Open WatchGPT on the iPhone → tap the gear → enter a key. UserDefaults overrides the baked-in default. "Reset to build default" restores whatever was baked.
+Open WatchGPT on the iPhone → tap the gear → enter a key. The runtime override is stored in Keychain and takes precedence over the baked-in default. "Reset to build default" removes the Keychain override and restores whatever was baked.
+
+## Regenerating and validating the project
+
+The committed Xcode project is generated with XcodeGen 2.44.1, pinned in `Mintfile`:
+
+```sh
+brew install mint
+npm run tools:bootstrap
+npm run project:generate
+npm run project:verify
+```
+
+Normal sideload installation does not require regeneration. Use these commands after changing `project.yml` or the source-file layout. Repeatable unsigned build, analysis, and test commands are documented in [Development](DEVELOPMENT.md).
 
 ## Why an iPhone companion
 

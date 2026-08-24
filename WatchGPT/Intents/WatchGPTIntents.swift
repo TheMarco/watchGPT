@@ -5,9 +5,9 @@ import AppIntents
 // reachable iPhone companion, so launching is the most an intent can reliably
 // drive without holding session state.
 struct OpenWatchGPTIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open WatchGPT"
-    static var description = IntentDescription("Opens WatchGPT so you can start a voice conversation.")
-    static var openAppWhenRun = true
+    static let title: LocalizedStringResource = "Open WatchGPT"
+    static let description = IntentDescription("Opens WatchGPT so you can start a voice conversation.")
+    static let openAppWhenRun = true
 
     @MainActor
     func perform() async throws -> some IntentResult {

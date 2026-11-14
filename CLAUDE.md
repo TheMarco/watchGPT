@@ -11,7 +11,7 @@ Repo: https://github.com/TheMarco/watchGPT.
 - The watch cannot reliably run the OpenAI WebSocket directly. The iPhone companion is required.
 - The watch app supports two voice engines. The user-facing names are **Fast Mode** and **Think Mode** (`VoiceEngine.displayName`); the underlying enum cases are `realtime` and `gpt5` and the persisted UserDefaults values are unchanged.
   - **Fast Mode** (`realtime`): OpenAI `gpt-realtime-2.1` by default (`gpt-realtime-2.1-mini` selectable) over a WebSocket held by the phone.
-  - **Think Mode** (`gpt5`): phone-side local speech detection, transcription, Responses API using GPT-5.6 Terra by default (Sol/Luna selectable), then TTS back to the watch.
+  - **Think Mode** (`gpt5`): phone-side local speech detection, transcription, Responses API using GPT-6.1 Sol by default (Astra/Terra/Luna selectable), then GPT-Audio 1.5 speech back to the watch.
 - **Web search is wired in both modes** and requires only the OpenAI key:
   - Think Mode passes `tools: [{type: "web_search"}]` and `tool_choice: "auto"` to the Responses API; OpenAI runs the search/fetch/synthesis server-side.
   - Fast Mode registers a single `web_search` function tool on `session.update`. The phone bridge listens for `response.output_item.done` with `item.type == "function_call"` and proxies to a Responses API call with OpenAI's hosted `web_search` tool (`Self.runResponsesWebSearch`, 25 s timeout), returning the synthesized `answer` string in `function_call_output`. No third-party API keys anywhere.
@@ -114,7 +114,7 @@ OpenAI PCM16 deltas -> iPhone -> WCSession data -> Watch playback
 - `lastSentVoice` / `lastSentLanguage` / `lastSentVADEagerness` / `lastSentTranscriptionModel` track config changes; the UserDefaults observer fires a fresh `session.update` mid-session when any change.
 - Audio deltas are buffered to roughly 9,600 bytes before sending back to the watch for lower latency.
 
-### Think Mode (GPT-5.6)
+### Think Mode (GPT-6)
 
 This is not realtime. It is a sequential pipeline on the phone:
 
@@ -124,15 +124,15 @@ Watch mic PCM16 -> WCSession data -> phone local VAD
 -> chunked WCSession data -> Watch playback
 ```
 
-- Text model: `gpt-5.6-terra` by default; `gpt-5.6-sol` and `gpt-5.6-luna` are selectable.
+- Text model: `gpt-6.1-sol` by default; `gpt-6-astra`, `gpt-6.1-terra`, and `gpt-6-luna` are selectable.
 - Reasoning: `{ "effort": "low" }`.
-- Transcription model: `gpt-transcribe` by default, with `gpt-4o-mini-transcribe` as the lower-cost option. When a specific language is set, `language: "<iso>"` is added to the multipart upload.
-- TTS model: `gpt-4o-mini-tts`.
+- Transcription model: `gpt-transcribe`. When a specific language is set, `language: "<iso>"` is added to the multipart upload.
+- Speech model: `gpt-audio-1.5` through Chat Completions, returning PCM16 audio.
 - TTS voice uses the separate Think Mode voice picker and falls back to `coral`.
 - Web search: the Responses API call passes `tools: [{type: "web_search"}]` and `tool_choice: "auto"`. OpenAI runs the search, fetch, and synthesis server-side; we still parse `output_text` (or fall back to walking `output[].content[].text`).
 - Think Mode is intentionally one turn at a time:
   - listen → transcribe → think → stream speech → speak → return to listening
-- TTS is **streamed**: `streamSpeechToWatch` reads the `/v1/audio/speech` body incrementally and forwards Int16-aligned, paced (8 ms) chunks so the watch starts speaking before synthesis finishes. (Replaced the old buffer-everything `synthesizeSpeech` + `sendAudioToWatchInChunks`.)
+- Speech output is returned as PCM16 in a Chat Completions response and forwarded in Int16-aligned, paced (8 ms) chunks to the watch.
 - A tap on the watch during a Think turn sends `.cancelTurn`; the phone's `cancelRegularTurn()` cancels the in-flight `regularTurnTask` (and its URLSession calls).
 - The local VAD threshold (`regularSpeechThreshold`) is set from the watch's mic-sensitivity preset (sent in the `.start` payload → `MicSensitivity.thinkModeVADThreshold`).
 - Transcripts matching `ThinkTranscriptFilter.isLikelyHallucination` (Whisper silence artifacts like "Thank you") are dropped instead of spending a turn. Server-side `web_search_call`s are counted into `webSearchCount`.
@@ -306,7 +306,7 @@ Note: running tests / simulator builds may fail in this local environment becaus
 - Think Mode "never speaks back" was likely caused by sending synthesized speech as one huge `sendMessageData` payload. It is now chunked/paced, but verify on device.
 - Fast Mode is still the smoother path. Think Mode is turn-based and will never feel as immediate as Realtime, especially with web search adding another round-trip.
 - The watch screen can still dim. Workout runtime helps process lifetime; the AOD-aware main button makes the dim state look intentional rather than broken.
-- If OpenAI rejects a selected GPT-5.6 or Realtime 2.1 model, the user may not have API access to that model. The phone bridge surfaces the API error and tears down cleanly.
+- If OpenAI rejects a selected GPT-6 or Realtime 2.1 model, the user may not have API access to that model. The phone bridge surfaces the API error and tears down cleanly.
 - Background pickup is limited. If the iPhone app is force-quit, the watch cannot revive it.
 - Reconnect during an in-flight turn can lose buffered audio. The UX should eventually surface "connection dropped, try again" more explicitly.
 - Web search latency in Fast Mode is 2-5 s (Responses API web_search round-trip) before the spoken reply starts; the realtime instructions tell the model to say a brief preamble ("Let me check.") before slow searches.

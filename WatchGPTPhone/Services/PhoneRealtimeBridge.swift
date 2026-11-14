@@ -1007,7 +1007,7 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
             let transcript = try await transcribePCM16(pcmAudio)
             let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
 
-            // gpt-4o-mini-transcribe hallucinates stock phrases ("Thank you",
+            // Transcription models can return stock phrases ("Thank you",
             // "Thanks for watching") on near-silence; don't burn a whole turn on
             // them.
             guard !trimmedTranscript.isEmpty,
@@ -1590,70 +1590,62 @@ final class PhoneRealtimeBridge: NSObject, ObservableObject {
         return text
     }
 
-    // Streams TTS PCM as it arrives and forwards it to the watch in paced,
-    // Int16-aligned chunks, so the watch starts speaking while OpenAI is still
-    // synthesizing instead of waiting for the whole clip. Runs off the main
-    // actor (only the per-chunk WCSession send hops back).
+    // Requests speech from GPT-Audio and forwards its raw PCM16 response to the
+    // watch in paced, Int16-aligned chunks. Runs off the main actor (only the
+    // per-chunk WCSession send hops back).
     nonisolated private func streamSpeechToWatch(_ text: String) async throws {
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/audio/speech")!)
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
         request.httpMethod = "POST"
         request.timeoutInterval = 60
         request.setValue("Bearer \(PhoneConfiguration.openAIAPIKey)", forHTTPHeaderField: "authorization")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": PhoneConfiguration.ttsModel,
-            "voice": PhoneConfiguration.ttsVoice,
-            "input": text,
-            "response_format": "pcm",
-            "instructions": "Speak naturally and warmly. Keep the delivery concise and conversational."
+            "modalities": ["text", "audio"],
+            "audio": [
+                "voice": PhoneConfiguration.ttsVoice,
+                "format": "pcm16"
+            ],
+            "messages": [
+                [
+                    "role": "developer",
+                    "content": "Read the user's answer aloud verbatim. Do not add, omit, summarize, or rephrase any words. Speak naturally and warmly."
+                ],
+                ["role": "user", "content": text]
+            ],
+            "store": false
         ])
 
-        let (bytes, response) = try await urlSession.bytes(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
+        let (responseData, response) = try await urlSession.data(for: request)
+        try validateHTTPResponse(response, data: responseData)
+        guard let json = try JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let audio = message["audio"] as? [String: Any],
+              let encodedAudio = audio["data"] as? String,
+              let pcm = Data(base64Encoded: encodedAudio),
+              !pcm.isEmpty
+        else {
             throw PhoneRealtimeBridgeError.invalidResponse
         }
 
-        guard (200..<300).contains(http.statusCode) else {
-            var errorData = Data()
-            for try await byte in bytes {
-                errorData.append(byte)
-                if errorData.count > 8_192 { break }
-            }
-            let message: String
-            if let json = try? JSONSerialization.jsonObject(with: errorData) as? [String: Any],
-               let error = json["error"] as? [String: Any],
-               let text = error["message"] as? String {
-                message = text
-            } else {
-                message = HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
-            }
-            throw PhoneRealtimeBridgeError.openAI(message)
-        }
-
         let chunkBytes = watchAudioChunkBytes
-        var buffer = Data()
-        buffer.reserveCapacity(chunkBytes + 2)
-
-        for try await byte in bytes {
+        var offset = 0
+        while offset < pcm.count {
             try Task.checkCancellation()
-            buffer.append(byte)
-
-            if buffer.count >= chunkBytes {
-                let aligned = buffer.count - (buffer.count % 2)
-                await sendAudioToWatch(Data(buffer.prefix(aligned)))
-                buffer.removeFirst(aligned)
+            let remaining = pcm.count - offset
+            let length = min(chunkBytes, remaining)
+            let alignedLength = length - (length % 2)
+            guard alignedLength > 0 else { break }
+            await sendAudioToWatch(Data(pcm[offset..<(offset + alignedLength)]))
+            offset += alignedLength
+            if offset < pcm.count {
                 try? await Task.sleep(nanoseconds: 8_000_000)
             }
         }
-
-        let aligned = buffer.count - (buffer.count % 2)
-        if aligned > 0 {
-            await sendAudioToWatch(Data(buffer.prefix(aligned)))
-        }
     }
 
-    private func validateHTTPResponse(_ response: URLResponse, data: Data) throws {
+    nonisolated private func validateHTTPResponse(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw PhoneRealtimeBridgeError.invalidResponse
         }

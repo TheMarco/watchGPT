@@ -11,8 +11,7 @@ struct PhoneSettingsView: View {
     @AppStorage(PhoneConfiguration.regularReasoningEffortKey) private var reasoningEffort = ReasoningEffort.low.rawValue
     @AppStorage(PhoneConfiguration.assistantLanguageKey) private var language = AssistantLanguage.auto.rawValue
     @AppStorage(PhoneConfiguration.realtimeModelKey) private var realtimeModel = RealtimeModelOption.full.rawValue
-    @AppStorage(PhoneConfiguration.thinkModelKey) private var thinkModel = ThinkModelOption.terra.rawValue
-    @AppStorage(PhoneConfiguration.transcriptionModelKey) private var transcriptionModel = TranscriptionModelOption.quality.rawValue
+    @AppStorage(PhoneConfiguration.thinkModelKey) private var thinkModel = ThinkModelOption.sol.rawValue
 
     var body: some View {
         Form {
@@ -109,20 +108,15 @@ struct PhoneSettingsView: View {
             } header: {
                 Text("Think Mode")
             } footer: {
-                Text("Terra is balanced, Sol is most capable, and Luna is fastest. Higher reasoning may improve hard answers, but it starts speaking later.")
+                Text("Sol balances capability and cost. Astra is the most capable, Terra is fast and efficient, and Luna is the lowest-cost option. Higher reasoning may improve hard answers, but it starts speaking later.")
             }
 
             Section {
-                Picker("Model", selection: $transcriptionModel) {
-                    ForEach(TranscriptionModelOption.allCases) { option in
-                        Text(option.displayName).tag(option.rawValue)
-                    }
-                }
-                .pickerStyle(.navigationLink)
+                LabeledContent("Model", value: TranscriptionModelOption.quality.displayName)
             } header: {
                 Text("Transcription")
             } footer: {
-                Text("GPT Transcribe is the quality default. 4o Mini Transcribe reduces cost.")
+                Text("Uses OpenAI's recommended model for transcribing recorded speech.")
             }
 
             Section {

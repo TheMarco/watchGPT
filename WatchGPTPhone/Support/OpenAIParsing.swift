@@ -87,7 +87,7 @@ enum ThinkTranscriptFilter {
         "okay"
     ]
 
-    /// gpt-4o-mini-transcribe hallucinates stock phrases on near-silence; this
+    /// Transcription models can hallucinate stock phrases on near-silence; this
     /// flags whole-string matches only, so genuine short answers aren't dropped.
     static func isLikelyHallucination(_ text: String) -> Bool {
         let normalized = text

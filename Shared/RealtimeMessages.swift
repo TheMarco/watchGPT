@@ -37,7 +37,7 @@ enum VoiceEngine: String, CaseIterable, Codable, Sendable {
         case .realtime:
             return "OpenAI Realtime · streaming speech"
         case .gpt5:
-            return "GPT-5.6 · deeper reasoning"
+            return "GPT-6.1 · deeper reasoning"
         }
     }
 }

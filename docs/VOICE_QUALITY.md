@@ -28,7 +28,7 @@ Constants live in `WatchGPTPhone/Support/PhoneConfiguration.swift` and are sent 
 - `realtimeEagerness` (default `low` / Patient — semantic VAD, configurable in iPhone Settings)
 - `realtimeInstructions` (system prompt)
 
-Think Mode uses `gpt-transcribe` by default for transcription, `gpt-5.6-terra` for balanced reasoning, and `gpt-4o-mini-tts` for speech. Settings can trade quality/cost with 4o Mini Transcribe, GPT-5.6 Sol, or GPT-5.6 Luna.
+Think Mode uses `gpt-transcribe` for transcription, `gpt-6.1-sol` for balanced reasoning, and `gpt-audio-1.5` for speech. Settings offer GPT-6 Astra for maximum capability, GPT-6.1 Terra for speed, and GPT-6 Luna for lower cost.
 
 ## Known risks
 

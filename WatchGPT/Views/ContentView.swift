@@ -465,71 +465,14 @@ private struct VoiceOrb: View {
             let activeGlow = isLuminanceReduced ? Color.white.opacity(0.18) : glowColor.opacity(isActive ? 0.62 : 0.24)
             let glowRadius: CGFloat = isLuminanceReduced ? 4 : (isActive ? 18 : 9)
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(activeGradient, lineWidth: 2)
-                    .opacity(isLuminanceReduced ? 0.10 : (isActive ? 0.34 : 0.16))
-                    .scaleEffect(ringScale)
-
-                if #available(watchOS 26.0, *), !isLuminanceReduced {
-                    // Real Liquid Glass tile, tinted by the phase color. Glass
-                    // provides its own specular highlight and edge, so the hand-
-                    // painted white gloss/stroke below is dropped on 26.
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(.clear)
-                        .glassEffect(
-                            .regular.tint(glowColor.opacity(isActive ? 0.55 : 0.35)).interactive(),
-                            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        )
-                        .shadow(color: activeGlow, radius: glowRadius)
-                } else {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(activeGradient)
-                        .shadow(color: activeGlow, radius: glowRadius)
-                }
-
-                if !isLuminanceReduced {
-                    if #unavailable(watchOS 26.0) {
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .fill(
-                                RadialGradient(
-                                    colors: [.white.opacity(0.66), .white.opacity(0.05), .clear],
-                                    center: .topLeading,
-                                    startRadius: 2,
-                                    endRadius: 42
-                                )
-                            )
-
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .strokeBorder(.white.opacity(0.22), lineWidth: 0.8)
-                    }
-
-                    if phase == .listening {
-                        ForEach(0..<3, id: \.self) { index in
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .stroke(tint.opacity(0.18 - Double(index) * 0.035), lineWidth: 1)
-                                .scaleEffect(1.12 + pulse * 0.16 + CGFloat(index) * 0.10)
-                        }
-                    }
-                }
-
-                if usesBrandArtwork && !isLuminanceReduced {
-                    WatchBrandIconImage()
-                        .frame(width: 54, height: 54)
-                        .shadow(color: .black.opacity(0.16), radius: 5, y: 2)
-                } else {
-                    Image(systemName: activeIcon)
-                        .font(.system(size: 27, weight: .semibold))
-                        .foregroundStyle(.white.opacity(isLuminanceReduced ? 0.78 : 1.0))
-                        .symbolEffect(
-                            .pulse,
-                            options: .repeating,
-                            value: !isLuminanceReduced && !reduceMotion && phase == .listening
-                        )
-                }
-            }
-            .scaleEffect(isPressed ? 0.92 : 1.0)
-            .animation(reduceMotion ? nil : .spring(duration: 0.18), value: isPressed)
+            orbFace(
+                pulse: pulse,
+                ringScale: ringScale,
+                activeGradient: activeGradient,
+                activeIcon: activeIcon,
+                activeGlow: activeGlow,
+                glowRadius: glowRadius
+            )
         }
         .contentShape(Circle())
         .onLongPressGesture(
@@ -573,6 +516,79 @@ private struct VoiceOrb: View {
                 }
             }
         }
+    }
+
+    private func orbFace(
+        pulse: Double,
+        ringScale: Double,
+        activeGradient: LinearGradient,
+        activeIcon: String,
+        activeGlow: Color,
+        glowRadius: CGFloat
+    ) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(activeGradient, lineWidth: 2)
+                .opacity(isLuminanceReduced ? 0.10 : (isActive ? 0.34 : 0.16))
+                .scaleEffect(ringScale)
+
+            if #available(watchOS 26.0, *), !isLuminanceReduced {
+                // Glass provides its own specular highlight and edge.
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(.clear)
+                    .glassEffect(
+                        .regular.tint(glowColor.opacity(isActive ? 0.55 : 0.35)).interactive(),
+                        in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    )
+                    .shadow(color: activeGlow, radius: glowRadius)
+            } else {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(activeGradient)
+                    .shadow(color: activeGlow, radius: glowRadius)
+            }
+
+            if !isLuminanceReduced {
+                if #unavailable(watchOS 26.0) {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [.white.opacity(0.66), .white.opacity(0.05), .clear],
+                                center: .topLeading,
+                                startRadius: 2,
+                                endRadius: 42
+                            )
+                        )
+
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(.white.opacity(0.22), lineWidth: 0.8)
+                }
+
+                if phase == .listening {
+                    ForEach(0..<3, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(tint.opacity(0.18 - Double(index) * 0.035), lineWidth: 1)
+                            .scaleEffect(1.12 + pulse * 0.16 + Double(index) * 0.10)
+                    }
+                }
+            }
+
+            if usesBrandArtwork && !isLuminanceReduced {
+                WatchBrandIconImage()
+                    .frame(width: 54, height: 54)
+                    .shadow(color: .black.opacity(0.16), radius: 5, y: 2)
+            } else {
+                Image(systemName: activeIcon)
+                    .font(.system(size: 27, weight: .semibold))
+                    .foregroundStyle(.white.opacity(isLuminanceReduced ? 0.78 : 1.0))
+                    .symbolEffect(
+                        .pulse,
+                        options: .repeating,
+                        value: !isLuminanceReduced && !reduceMotion && phase == .listening
+                    )
+            }
+        }
+        .scaleEffect(isPressed ? 0.92 : 1.0)
+        .animation(reduceMotion ? nil : .spring(duration: 0.18), value: isPressed)
     }
 
     private var accessibilityValue: String {

@@ -27,7 +27,7 @@ Holds the OpenAI Realtime WebSocket and the API key.
 - Forwards watch audio to OpenAI as `input_audio_buffer.append` (base64 PCM).
 - Forwards OpenAI audio deltas to the watch inside the session-scoped binary audio envelope over `sendMessageData`.
 - Forwards transcripts and state events to watch as `[String: Any]` messages.
-- Think Mode skips the Realtime socket and uses a chained voice pipeline: local peak/silence detection on the phone, Audio Transcriptions (`gpt-transcribe` by default or `gpt-4o-mini-transcribe`), Responses API (`gpt-5.6-terra` by default, with Sol and Luna selectable), then `gpt-4o-mini-tts` speech with PCM output back to the watch.
+- Think Mode skips the Realtime socket and uses a chained voice pipeline: local peak/silence detection on the phone, Audio Transcriptions (`gpt-transcribe`), Responses API (`gpt-6.1-sol` by default, with Astra, Terra, and Luna selectable), then `gpt-audio-1.5` speech with PCM output back to the watch.
 - Socket writes use a bounded ordered queue. Turn duration, session duration, response output, and tool calls have explicit limits; session-scoped tasks are cancelled during teardown.
 - Transcript snapshots are persisted off the main actor by `TranscriptStore`, with debounced atomic writes to a data-protected file under Application Support.
 
@@ -51,10 +51,12 @@ On launch, a legacy `UserDefaults` override is migrated to Keychain and scrubbed
 ## Model policy
 
 - Fast voice: `gpt-realtime-2.1` default; `gpt-realtime-2.1-mini` economy option.
-- Think reasoning: `gpt-5.6-terra` balanced default; `gpt-5.6-sol` maximum-capability and `gpt-5.6-luna` economy options.
-- Transcription: `gpt-transcribe` quality default; `gpt-4o-mini-transcribe` economy option.
-- Think speech: `gpt-4o-mini-tts`.
-- Transcript metadata: `gpt-5.6-luna`, with a small output budget.
+- Think reasoning: `gpt-6.1-sol` default; `gpt-6-astra` maximum-capability, `gpt-6.1-terra` fast, and `gpt-6-luna` economy options.
+- Transcription: `gpt-transcribe`, OpenAI's recommended model for completed audio files.
+- Think speech: `gpt-audio-1.5` through Chat Completions, returning PCM16 audio.
+- Transcript metadata: `gpt-6-luna`, with a small output budget.
+
+Fast Mode stays on GPT-Realtime 2.1 and its mini variant because the app currently uses the Realtime API protocol; GPT-Live 1 requires a separate migration to its `/v1/live/sessions` protocol.
 
 The selectable aliases are intentional for a personal app that can adopt current behavior immediately. If reproducible model behavior becomes more important, pin tested model snapshots in `PhoneConfiguration`.
 

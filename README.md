@@ -1,6 +1,6 @@
 # WatchGPT
 
-Realtime ChatGPT voice for Apple Watch. Tap the main button, talk, hear the answer streamed back through the watch speaker. Two modes: **Fast Mode** (OpenAI's `gpt-realtime-2.1` for true streaming speech-to-speech) and **Think Mode** (a turn-based GPT-5.6 pipeline for cases where you want slower, deeper reasoning).
+Realtime ChatGPT voice for Apple Watch. Tap the main button, talk, hear the answer streamed back through the watch speaker. Two modes: **Fast Mode** (OpenAI's `gpt-realtime-2.1` for true streaming speech-to-speech) and **Think Mode** (a turn-based GPT-6 pipeline for cases where you want slower, deeper reasoning).
 
 This is a **personal sideloading project**. There is no App Store build and there will not be one. You bring your own OpenAI API key, you build it yourself, you run it on your own watch.
 
@@ -23,7 +23,7 @@ The watch cannot reliably open arbitrary outbound WebSockets on its own. That's 
 ## Features
 
 - **Fast Mode** — OpenAI `gpt-realtime-2.1` by default, with `gpt-realtime-2.1-mini` as a lower-cost option. Semantic VAD and streaming speech-to-speech keep latency conversational.
-- **Think Mode** — phone-side speech detection → transcription → Responses API (`gpt-5.6-terra` by default, with Sol and Luna selectable) → TTS → playback. Multi-second latency per turn, but deeper reasoning.
+- **Think Mode** — phone-side speech detection → transcription → Responses API (`gpt-6.1-sol` by default, with Astra, Terra, and Luna selectable) → GPT-Audio 1.5 speech → playback. Multi-second latency per turn, but deeper reasoning.
 - **Web search in both modes — no extra keys.** Both modes use OpenAI's hosted `web_search` server-side: Think Mode calls the Responses API directly, and Fast Mode registers a single `web_search` function tool that proxies to the same backend.
 - **Hands-free** by default. Push-to-talk available in watch settings.
 - **Voice barge-in toggle.** Off by default — half-duplex with tap-to-interrupt for quieter, less-echoey conversations. Flip it on if you want to interrupt the assistant by talking.
@@ -46,9 +46,11 @@ The app keeps model choices centralized and exposes the useful quality/cost trad
 | Workload | Default | Alternatives |
 | --- | --- | --- |
 | Fast Mode | [`gpt-realtime-2.1`](https://developers.openai.com/api/docs/models/gpt-realtime-2.1) | `gpt-realtime-2.1-mini` |
-| Think Mode | [`gpt-5.6-terra`](https://developers.openai.com/api/docs/models/gpt-5.6-terra) | `gpt-5.6-sol` for maximum capability; `gpt-5.6-luna` for economy |
-| Transcription | [`gpt-transcribe`](https://developers.openai.com/api/docs/models/gpt-transcribe) | `gpt-4o-mini-transcribe` for economy |
-| Think Mode speech | [`gpt-4o-mini-tts`](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts) | Voice is selectable; the speech model is fixed |
+| Think Mode | [`gpt-6.1-sol`](https://developers.openai.com/api/docs/models/gpt-6.1-sol) | `gpt-6-astra` for maximum capability; `gpt-6.1-terra` for speed; `gpt-6-luna` for economy |
+| Transcription | [`gpt-transcribe`](https://developers.openai.com/api/docs/models/gpt-transcribe) | Current recommended file transcription model |
+| Think Mode speech | [`gpt-audio-1.5`](https://developers.openai.com/api/docs/models/gpt-audio-1.5) | Voice is selectable; audio is returned as PCM16 |
+
+Fast Mode stays on GPT-Realtime 2.1 because it uses the Realtime API's current WebSocket protocol. GPT-Live 1 is a newer voice product with a different API and event flow; adopting it requires a separate voice architecture migration.
 
 Request, tool-call, queue, turn, and session limits are deliberately bounded to reduce the chance of accidental API spend during a personal session.
 
@@ -57,7 +59,7 @@ Request, tool-call, queue, turn, and session limits are deliberately bounded to 
 - A Mac with Xcode 26 or newer (watchOS + iOS SDKs installed via Xcode → Settings → Components).
 - Apple Watch running watchOS 11 or newer, paired with an iPhone running iOS 17 or newer.
 - An Apple ID for code signing. A free personal team is fine for sideloading.
-- An OpenAI API key with access to the models you select. Fast Mode defaults to `gpt-realtime-2.1`; Think Mode defaults to `gpt-5.6-terra`.
+- An OpenAI API key with access to the models you select. Fast Mode defaults to `gpt-realtime-2.1`; Think Mode defaults to `gpt-6.1-sol`.
 - Node.js 20+ for the configuration and repeatable build commands.
 - Optional for source-layout changes: [Mint](https://github.com/yonaskolb/Mint) (`brew install mint`). The checked-in `Mintfile` pins XcodeGen 2.44.1 reproducibly.
 
@@ -140,8 +142,8 @@ On the **iPhone**, hit the gear icon:
 - **Default mode** — Fast Mode or Think Mode. The watch starts whichever mode is selected here.
 - **Fast Mode model and voice** — choose Realtime 2.1 or Realtime 2.1 Mini and pick from 10 realtime voices. `marin` and `cedar` are strong defaults.
 - **Fast Mode turn-taking** — Patient / Balanced / Quick semantic VAD eagerness.
-- **Think Mode model, voice, and reasoning** — choose Terra / Sol / Luna, a TTS voice, and the reasoning effort.
-- **Transcription model** — use GPT Transcribe for quality or 4o Mini Transcribe for economy.
+- **Think Mode model, voice, and reasoning** — choose Astra / Sol / Terra / Luna, a speech voice, and the reasoning effort.
+- **Transcription** — uses GPT Transcribe, OpenAI's current recommended model for recorded speech.
 - **Assistant language** — Auto (matches what you speak, falls back to English when uncertain) or pin to one of 38 languages.
 
 The iPhone companion main screen also includes **Help** and **About** shortcuts, plus a collapsible **Diagnostics** panel for live troubleshooting.

@@ -240,24 +240,27 @@ enum RealtimeModelOption: String, CaseIterable, Identifiable {
 }
 
 enum ThinkModelOption: String, CaseIterable, Identifiable {
-    case terra = "gpt-5.6-terra"
-    case sol = "gpt-5.6-sol"
-    case luna = "gpt-5.6-luna"
+    case astra = "gpt-6-astra"
+    case sol = "gpt-6.1-sol"
+    case terra = "gpt-6.1-terra"
+    case luna = "gpt-6-luna"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .terra: return "GPT-5.6 Terra"
-        case .sol: return "GPT-5.6 Sol"
-        case .luna: return "GPT-5.6 Luna"
+        case .astra: return "GPT-6 Astra"
+        case .sol: return "GPT-6.1 Sol"
+        case .terra: return "GPT-6.1 Terra"
+        case .luna: return "GPT-6 Luna"
         }
     }
 
     var detail: String {
         switch self {
-        case .terra: return "Balanced quality, speed, and cost."
-        case .sol: return "Highest capability for difficult questions."
+        case .astra: return "Highest capability for difficult questions."
+        case .sol: return "Near-flagship quality with lower cost."
+        case .terra: return "Fast and efficient for clear answers."
         case .luna: return "Fastest and most economical."
         }
     }
@@ -265,22 +268,15 @@ enum ThinkModelOption: String, CaseIterable, Identifiable {
 
 enum TranscriptionModelOption: String, CaseIterable, Identifiable {
     case quality = "gpt-transcribe"
-    case mini = "gpt-4o-mini-transcribe"
 
     var id: String { rawValue }
 
     var displayName: String {
-        switch self {
-        case .quality: return "GPT Transcribe"
-        case .mini: return "4o Mini Transcribe"
-        }
+        "GPT Transcribe"
     }
 
     var detail: String {
-        switch self {
-        case .quality: return "Best transcription quality."
-        case .mini: return "Lower-cost transcription."
-        }
+        "Current recommended model for recorded speech."
     }
 }
 
@@ -320,10 +316,9 @@ enum PhoneConfiguration {
         "onyx",
         "nova",
         "sage",
-        "shimmer",
-        "verse"
+        "shimmer"
     ]
-    static let ttsModel = "gpt-4o-mini-tts"
+    static let ttsModel = "gpt-audio-1.5"
     static let transcriptMetadataModel = ThinkModelOption.luna.rawValue
     static let realtimeMaxOutputTokens = 768
     static let thinkMaxOutputTokens = 1_600
@@ -358,8 +353,8 @@ enum PhoneConfiguration {
     }
 
     static var regularVoiceModel: String {
-        let raw = UserDefaults.standard.string(forKey: thinkModelKey) ?? ThinkModelOption.terra.rawValue
-        return ThinkModelOption(rawValue: raw)?.rawValue ?? ThinkModelOption.terra.rawValue
+        let raw = UserDefaults.standard.string(forKey: thinkModelKey) ?? ThinkModelOption.sol.rawValue
+        return ThinkModelOption(rawValue: raw)?.rawValue ?? ThinkModelOption.sol.rawValue
     }
 
     static var transcriptionModel: String {
@@ -487,7 +482,8 @@ enum PhoneConfiguration {
     }
 
     static func registerDefaults() {
-        UserDefaults.standard.register(defaults: [
+        let defaults = UserDefaults.standard
+        defaults.register(defaults: [
             defaultVoiceEngineKey: VoiceEngine.realtime.rawValue,
             realtimeVoiceKey: defaultRealtimeVoice,
             thinkVoiceKey: defaultThinkVoice,
@@ -495,9 +491,24 @@ enum PhoneConfiguration {
             regularReasoningEffortKey: ReasoningEffort.low.rawValue,
             assistantLanguageKey: AssistantLanguage.auto.rawValue,
             realtimeModelKey: RealtimeModelOption.full.rawValue,
-            thinkModelKey: ThinkModelOption.terra.rawValue,
+            thinkModelKey: ThinkModelOption.sol.rawValue,
             transcriptionModelKey: TranscriptionModelOption.quality.rawValue
         ])
+
+        let storedThinkModel = defaults.string(forKey: thinkModelKey) ?? ""
+        if ThinkModelOption(rawValue: storedThinkModel) == nil {
+            defaults.set(ThinkModelOption.sol.rawValue, forKey: thinkModelKey)
+        }
+
+        let storedTranscriptionModel = defaults.string(forKey: transcriptionModelKey) ?? ""
+        if TranscriptionModelOption(rawValue: storedTranscriptionModel) == nil {
+            defaults.set(TranscriptionModelOption.quality.rawValue, forKey: transcriptionModelKey)
+        }
+
+        let storedThinkVoice = defaults.string(forKey: thinkVoiceKey) ?? ""
+        if !availableTTSVoices.contains(storedThinkVoice) {
+            defaults.set(defaultThinkVoice, forKey: thinkVoiceKey)
+        }
     }
 
     private static func bundleString(for key: String, fallback: String) -> String {
